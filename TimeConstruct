@@ -1,0 +1,473 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+
+// © Zeiierman {
+//@version=5
+indicator("Time Construct", max_bars_back = 1000,max_lines_count = 500,overlay=true)
+
+square_9 = input.bool(false,'draw square 9s','draws square 9s')
+predbox = input.bool(false,'plot prediction using boxes')
+
+startDate = input.time(timestamp("2025-07-16T03:30:00"), "Start Date")
+endDate = input.time(timestamp("2025-07-16T04:30:00"), "End Date")
+bool showTable = input.bool(true, "Show Table")
+bool plotwalls = input.bool(false,"plot walls")
+var int barsInRange = 0
+var float sum =0.0
+var float sumSquares = 0.0
+// Calculate pip size (handles all instrument types)
+pipSize = syminfo.mintick * (syminfo.type == "forex" ? 10 : 1)
+
+// Calculate candle ranges in pips
+candleRangePips = (high - low) / pipSize
+
+// Calculate statistics using only closed candles
+closedCandleRange = candleRangePips[1]
+var float avgPipSize = na
+var float stdDevPips = na
+var float minRange = na
+var float maxRange = na
+inDateRange = time >= startDate and time <= endDate
+// Create the table on the last bar only
+var float highest = na
+var float lowest = na
+var float bars_distance = na
+var int barCount = 0
+var int firstBar = na
+var level = array.new<float>(11)
+float externalC = 0.0
+var float smaValue = na
+if inDateRange
+    barCount := barCount + 1
+    if na(firstBar)
+        firstBar := bar_index
+    if na(highest)
+        highest := high
+    else
+        highest := math.max(highest,high)
+
+    if na(lowest)
+        lowest := low
+    else
+        lowest := math.min(lowest,low)
+    if na(minRange)
+        minRange := candleRangePips
+        maxRange := candleRangePips
+    else
+        minRange := math.min(minRange,candleRangePips)
+        maxRange := math.max(maxRange,candleRangePips)
+
+    bars_distance :=  (highest - lowest)/pipSize
+    barsInRange := barsInRange + 1
+    sum := sum + candleRangePips
+    sumSquares := sumSquares + candleRangePips * candleRangePips
+
+    if barsInRange > 0
+        avgPipSize := sum/ barsInRange
+
+    if barsInRange > 1
+        variance = (sumSquares - sum * sum / barsInRange) / (barsInRange - 1)
+        stdDevPips := math.sqrt(variance)
+smaValue:= (barCount > 0) ? ta.sma(close, barCount) : na
+
+
+
+
+if ta.change(startDate) or ta.change(endDate)
+    firstBar := na
+    avgPipSize := na
+    stdDevPips := na
+    minRange := na
+    maxRange := na
+    barsInRange := 0
+    sum := 0.0
+    sumSquares := 0.0   
+    externalC := 0.0
+
+
+
+
+// Current candle range
+currentRange = candleRangePips
+
+if showTable and barstate.islast
+    // Initialize table
+    var table statsTable = table.new(position.top_right, 3, 16,       frame_color=color.new(#2D3E50, 0),      frame_width=1,      border_width=1,      border_color=color.new(#000000, 70))
+    
+    // Title row
+    //table.cell(statsTable, 0, 0, "Pip Range Statistics",       bgcolor=color.new(#2D3E50, 0),       text_color=color.white,       width=4)
+    
+    // Average row
+    //table.cell(statsTable, 0, 2, "Average",       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    //table.cell(statsTable, 1, 2, str.tostring(math.round(avgPipSize, 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white )
+    
+    // Standard deviation row
+    //table.cell(statsTable, 0, 3, "Standard Deviation",       bgcolor=color.new(#34495E, 50),text_color=color.white)
+    //table.cell(statsTable, 1, 3, str.tostring(math.round(stdDevPips, 2), "#.##"),       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    
+    // Min row
+    //table.cell(statsTable, 0, 4, "Minimum",       bgcolor=color.new(#34495E, 50),text_color=color.white)
+    //table.cell(statsTable, 1, 4, str.tostring(math.round(minRange, 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    
+    // Max row
+    //table.cell(statsTable, 0, 3, "GANN30minORB Range",       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    //table.cell(statsTable, 1, 3, "Day Market Direction",      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    
+    // distance
+    //table.cell(statsTable, 0, 4, "distance",       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    //table.cell(statsTable, 1, 4, str.tostring(math.round(bars_distance, 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+
+    // price to date
+    //table.cell(statsTable, 0, 5, "price to date",       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    var float timesteps = bars_distance/minRange
+    timesteps := bars_distance / 1000
+    //table.cell(statsTable, 1, 5, str.tostring(math.round(timesteps, 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    
+    // C
+    table.cell(statsTable, 1, 0, "C",       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    var float c = math.sqrt(math.pow(timesteps,2) + math.pow(barCount,2))
+    externalC := c
+    table.cell(statsTable, 0, 0, str.tostring(math.round(c, 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+
+
+    // Volatility row
+    volatilityRatio = candleRangePips / avgPipSize
+    table.cell(statsTable, 0, 1, "Volatility Ratio",       bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 1, 1, str.tostring(math.round(volatilityRatio, 2), "#.##"),       bgcolor=volatilityRatio > 1.5 ? color.new(#E74C3C, 70) :         volatilityRatio < 0.75 ? color.new(#2ECC71, 70) : color.new(#34495E, 50),text_color=color.white)
+
+    // C
+    
+    table.cell(statsTable, 0, 2, str.tostring(math.round(c*1.272,2),"#.##"),       bgcolor=color.new(#34495E, 50),text_color=color.white )
+    
+
+    table.cell(statsTable, 1, 2, str.tostring(math.round(c*1.382 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    table.cell(statsTable, 0, 3, "Gold "+str.tostring(math.round(c*1.414,2),"#.##"),       bgcolor=color.new(#34495E, 50),text_color=color.white )
+
+    table.cell(statsTable, 1, 3, str.tostring(math.round(c*1.5 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    table.cell(statsTable, 0, 4, str.tostring(math.round(c*1.618,2),"#.##"),       bgcolor=color.new(#34495E, 50),text_color=color.white )
+
+    table.cell(statsTable, 1, 4, str.tostring(math.round(c*1.732 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    
+    // C
+    table.cell(statsTable, 0, 5, str.tostring(math.round(c*2 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    table.cell(statsTable, 0, 5, str.tostring(math.round(c*2.236 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    timestepvarm90 = ((math.round((((math.sqrt(timesteps)*180)-255)/360) , 4) - math.round((((math.sqrt(timesteps)*180)-255)/360) , 0))*360)-90
+    timestepvarp90 = ((math.round((((math.sqrt(timesteps)*180)-255)/360) , 4) - math.round((((math.sqrt(timesteps)*180)-255)/360) , 0))*360)+90
+    timestepvar = ((math.round((((math.sqrt(timesteps)*180)-255)/360) , 4) - math.round((((math.sqrt(timesteps)*180)-255)/360) , 0))*360)
+    if timestepvarm90 < 0 
+        timestepvarm90 := timestepvarm90 + 360
+    if timestepvarp90 > 360 
+        timestepvarp90 := timestepvarp90 - 360
+    if timestepvar < 0 
+        timestepvar := timestepvar + 360
+
+    highestm90 = ((math.round((((math.sqrt(highest)*180)-255)/360) , 4) - math.round((((math.sqrt(highest)*180)-255)/360) , 0))*360)-90 
+    highestmed = ((math.round((((math.sqrt(highest)*180)-255)/360) , 4) - math.round((((math.sqrt(highest)*180)-255)/360) , 0))*360)
+    highestp90 = ((math.round((((math.sqrt(highest)*180)-255)/360) , 4) - math.round((((math.sqrt(highest)*180)-255)/360) , 0))*360)+90
+
+    if highestm90 < 0
+        highestm90 := highestm90 + 360
+    if highestmed < 0
+        highestmed := highestmed + 360
+    if highestp90 > 360
+        highestp90 := highestp90 - 360
+
+    lowestm90 = ((math.round((((math.sqrt(lowest)*180)-255)/360) , 4) - math.round((((math.sqrt(lowest)*180)-255)/360) , 0))*360)-90 
+    lowestmed = ((math.round((((math.sqrt(lowest)*180)-255)/360) , 4) - math.round((((math.sqrt(lowest)*180)-255)/360) , 0))*360)
+    lowestp90 = ((math.round((((math.sqrt(lowest)*180)-255)/360) , 4) - math.round((((math.sqrt(lowest)*180)-255)/360) , 0))*360)+90
+    if lowestm90 < 0
+        lowestm90 := lowestm90 + 360
+    if lowestmed < 0
+        lowestmed := lowestmed + 360
+    if lowestp90 > 360
+        lowestp90 := lowestp90 - 360
+
+    diffgann = highest - lowest
+
+
+
+    diffgm90 = ((math.round((((math.sqrt(diffgann)*180)-255)/360) , 4) - math.round((((math.sqrt(diffgann)*180)-255)/360) , 0))*360)-90 
+    diffgmed = ((math.round((((math.sqrt(diffgann)*180)-255)/360) , 4) - math.round((((math.sqrt(diffgann)*180)-255)/360) , 0))*360)
+    diffgp90 = ((math.round((((math.sqrt(diffgann)*180)-255)/360) , 4) - math.round((((math.sqrt(diffgann)*180)-255)/360) , 0))*360)+90
+
+    if diffgm90 < 0
+        diffgm90 := diffgm90 + 360
+    if diffgmed < 0
+        diffgmed := diffgmed + 360
+    if diffgp90 > 360
+        diffgp90 := diffgp90 - 360
+
+    table.cell(statsTable, 0, 6, str.tostring(timestepvarm90 , "#.####"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 1, 6, str.tostring(timestepvar , "#.####"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 2, 6, str.tostring(timestepvarp90 , "#.####"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 0, 7, str.tostring(highestm90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 1, 7, str.tostring(highestmed, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 2, 7, str.tostring(highestp90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 0, 8, str.tostring(lowestm90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 1, 8, str.tostring(lowestmed, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 2, 8, str.tostring(lowestp90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 0, 9, str.tostring(diffgm90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 1, 9, str.tostring(diffgmed, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+    table.cell(statsTable, 2, 9, str.tostring(diffgp90, "#.####")      ,bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    // table.cell(statsTable, 1, 6, str.tostring(math.round(c*2.236 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    //table.cell(statsTable, 0, 5, str.tostring(math.round(c*3.618 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    //table.cell(statsTable, 0, 5, str.tostring(math.round(c*4.236 , 2), "#.##"),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+
+    //table.cell(statsTable, 1, 6, str.tostring(barCount),      bgcolor=color.new(#34495E, 50),text_color=color.white)
+    
+    if plotwalls 
+        line.new(firstBar+math.floor(c*1), 0, firstBar+math.floor(c*1), 4000, color=color.new(#0bbdf3, 0), width=2)
+        line.new(firstBar+math.floor(c*1.272), 0, firstBar+math.floor(c*1.272), 4000, color=color.new(#0bbdf3, 0), width=2)
+        line.new(firstBar+math.floor(c*1.516), 0, firstBar+math.floor(c*1.516), 4000, color=color.new(#0bbdf3, 0), width=2)
+        line.new(firstBar+math.floor((math.floor(c*1.516)+math.floor(c*2.236))/2), 0, firstBar+math.floor((math.floor(c*1.516)+math.floor(c*2.236))/2), 4000, color=color.new(#0bbdf3, 0), width=2)
+        line.new(firstBar+math.floor(c*2.236), 0, firstBar+math.floor(c*2.236), 4000, color=color.new(#0bbdf3, 0), width=2)
+        //line.new(firstBar+math.floor(c*3.618), 0, firstBar+math.floor(c*3.618), 4000, color=color.new(#ff8c00, 50), width=1)
+        //line.new(firstBar+math.floor(c*4.236), 0, firstBar+math.floor(c*4.236), 4000, color=color.new(#ffffff, 50), width=1)
+
+
+
+plot(smaValue, color=color.white, title="SMA")
+
+
+var bufferSize = 200/20
+var bullvolumeSurgeBucket = array.new_float(bufferSize+1)
+var bullvolumeTickCost = array.new_float(bufferSize+1)
+var bullvolumeMovement = array.new_float(bufferSize+1)
+var bearvolumeSurgeBucket = array.new_float(bufferSize+1)
+var bearvolumeTickCost = array.new_float(bufferSize+1)
+var bearvolumeMovement = array.new_float(bufferSize+1)
+
+var directionBucket = array.new_bool(bufferSize+1)
+// ─────────────── Input Parameters ───────────────
+efiLength          = input.int(13,  title="EFI Length",                 minval=1)
+efiAvgPeriod       = input.int(13,  title="Calibrated EFI Avg Period",  minval=1)
+volPeriod          = input.int(20,  title="Volatility Period",          minval=1)
+surgeMultiplier    = input.float(1, title="Surge Multiplier",           step=0.1)
+surgeRateThreshold = input.float(1.0, title="Surge Rate (%) Threshold",  step=0.1)
+trendPeriod        = input.int(50,  title="Trend MA Period",            minval=1)
+
+
+// User inputs
+shadowFactor = input.float(0.001, title="Shadow Factor (Multiplier)", step=0.1, tooltip="Wick length must be greater than body length * Shadow Factor")
+minBody      = input.float(0.0, title="Minimum Body Size", step=0.1, tooltip="Optional minimum body size to filter out dojis")
+
+literalStrength = input.float(0.0, title="Filter tick strength", step=0.1, tooltip="Filter tick strength")
+plotvolvals = input.bool(false, 'Plot vol values')
+
+// ─────────────── Persistent Variable for Label Tracking ───────────────
+var string lastSurgeLabel = ""
+
+// ─────────────── EFI Calculation & Volatility ───────────────
+// Calculate EFI
+efiValue = ta.ema((close - close[1]) * volume, efiLength)
+// Compute volatility as the standard deviation of percentage returns
+ret        = 100 * (close - close[1]) / close[1]
+volatility = ta.stdev(ret, volPeriod)
+// Calibrate EFI by normalizing it with volatility
+calibratedEFI = volatility != 0 ? efiValue / volatility : 0
+absCalibratedEFI = math.abs(calibratedEFI)
+
+// ─────────────── Baseline & Derived Metrics for Surge Detection ───────────────
+calibratedEFIAvg = ta.sma(absCalibratedEFI, efiAvgPeriod)
+calibratedEFIRatio = absCalibratedEFI / calibratedEFIAvg
+calibratedEFIROC = absCalibratedEFI[1] != 0 ? 100 * (absCalibratedEFI - absCalibratedEFI[1]) / absCalibratedEFI[1] : 0
+
+// ─────────────── Early Surge Detection ───────────────
+crossover_condition = ta.crossover(calibratedEFIRatio, surgeMultiplier)
+earlySurge = crossover_condition and (calibratedEFIROC > surgeRateThreshold)
+
+// ─────────────── Trend Determination ───────────────
+trendMA = ta.ema(close, trendPeriod)
+trendUp = close > trendMA
+trendIndicator = trendUp ? "Uptrend" : "Downtrend"
+
+// Calculate candle components
+body       = math.abs(close - open)
+lowerWick  = math.min(open, close) - low
+upperWick  = high - math.max(open, close)
+
+// Define conditions:
+// For bearish candles: candle is red (close < open) and the lower wick is longer than (body * shadowFactor)
+
+
+pivLow = ta.pivotlow(5, 5)
+pivHigh = ta.pivothigh(5, 5)
+
+bearLongLower = close < open and body > minBody and lowerWick > body * shadowFactor
+
+// For bullish candles: candle is green (close > open) and the upper wick is longer than (body * shadowFactor)
+bullLongUpper = close > open and body > minBody and upperWick > body * shadowFactor
+
+prev1_high = high[1]
+prev1_low  = low[1]
+prev2_high = high[2]
+prev2_low  = low[2]
+
+
+plotshape(   earlySurge and bullLongUpper   , title="EFI Early Surge Signal",      location=location.belowbar, color=#fbff1b, style= shape.triangleup  , size=size.small) // absardist > 10 and
+plotshape(   earlySurge and bullLongUpper and close > prev1_high and close > prev2_high and open < prev2_low  and close[1] < open[1] and close[2] < open[2] , title="EFI Early Surge Signal",      location=location.belowbar, color=#ff1bfb, style= shape.triangleup  , size=size.small) // absardist > 10 and
+plotshape(   earlySurge and bullLongUpper and close > prev1_high and close[1] > open[1] and close[2] > open[2]  , title="EFI Early Surge Signal",      location=location.belowbar, color=#fbff1b, style= shape.triangleup  , size=size.small) // absardist > 10 and
+plotshape(  earlySurge and bearLongLower , title="EFI Early Surge Signal",      location=location.abovebar, color=color.rgb(70, 70, 70), style= shape.triangledown  , size=size.small)
+plotshape(  earlySurge and bearLongLower and close < prev1_low and close < prev2_low and open > prev2_high , title="EFI Early Surge Signal",      location=location.abovebar, color=color.rgb(68, 0, 255), style= shape.triangledown  , size=size.small)
+plotshape(  earlySurge and bearLongLower and close < prev1_low  and close[1] < open[1] and close[2] < open[2] and close[1] > open[1] and close[2] > open[2], title="EFI Early Surge Signal",      location=location.abovebar, color=color.rgb(70, 70, 70), style= shape.triangledown  , size=size.small)
+
+
+
+
+//-------------------------------
+
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © M3RZI improved by Rouzi
+
+quarter = input.bool(false, title = "1/4 lines", group = "Lines")
+sixth = input.bool(false, title = "1/6 lines", group = "Lines")
+eighth = input.bool(false, title = "1/8 lines", group = "Lines")
+
+outsiteLines = input.color(color.blue, title = "Frame Lines Color", group = "Style", inline = "colors")
+insideLines = input.color(color.white, title = "Inside Lines Color", group = "Style", inline = "colors")
+widthLines =  input.int(1, title = "Width", group = "Style")
+
+
+barsFromStart  = (time - startDate)/(time - time[1]) // From start to real time
+barsFromEnd = (time - endDate)/(time - time[1]) // From end to real time
+bars = barsFromStart - barsFromEnd
+var lines = array.new_line()
+
+getHighestValue(lookback, beginning) =>
+    float higher = 0.0
+    for i = 0 to lookback - 1
+        value = nz(high[beginning - i], higher[1])
+        if value > higher
+            higher := value
+    higher
+
+getLowestValue(lookback, beginning) =>
+    float lowest = 10000000000000
+    for i = 0 to lookback - 1
+        value = nz(low[beginning - i], lowest[1])
+        if value < lowest
+            lowest := value
+    lowest
+
+drawSquares(startTime, endTime, highValue, lowValue, midValue) =>
+    //DRAW LINES
+    //## Square lines ##
+    array.push(lines, line.new(startTime, highValue, endTime, highValue, xloc = xloc.bar_time, color = outsiteLines, width = widthLines))    
+    array.push(lines, line.new(startTime, lowValue, endTime, lowValue, xloc = xloc.bar_time, color = outsiteLines, width = widthLines))
+    array.push(lines, line.new(startTime, highValue, startTime, lowValue, xloc = xloc.bar_time, color = outsiteLines, width = widthLines))
+    array.push(lines, line.new(endTime, highValue, endTime, lowValue, xloc = xloc.bar_time, color = outsiteLines, width = widthLines))
+    //## X inside square ##
+    array.push(lines, line.new(startTime, lowValue, endTime, highValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new(startTime, highValue, endTime, lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    //##  Vertical mid start and end ##
+    array.push(lines, line.new(startTime, midValue, endTime, highValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new(startTime, midValue, endTime, lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new(endTime, midValue, startTime, highValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new(endTime, midValue, startTime, lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    //## Horizontal mid start and end ##
+    array.push(lines, line.new((startTime + ((endTime - startTime) / 2)), lowValue, endTime, highValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new((startTime + ((endTime - startTime) / 2)), lowValue, startTime, highValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new((startTime + ((endTime - startTime) / 2)), highValue, endTime, lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    array.push(lines, line.new((startTime + ((endTime - startTime) / 2)), highValue, startTime, lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    //Quarter lines
+    if quarter
+        sectionPriceInterval = ((highValue - lowValue) / 4)
+        sectionTimeInterval = ((endTime - startTime) / 4)
+        for i = 1 to 3
+            array.push(lines, line.new(startTime, (lowValue + (sectionPriceInterval * i)), endTime, (lowValue + (sectionPriceInterval * i)), xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+            array.push(lines, line.new((startTime + (sectionTimeInterval * i)), highValue, (startTime + (sectionTimeInterval * i)), lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    //Sixth lines
+    if sixth
+        sectionPriceInterval = ((highValue - lowValue) / 6)
+        sectionTimeInterval = ((endTime - startTime) / 6)
+        for i = 1 to 5
+            array.push(lines, line.new(startTime, (lowValue + (sectionPriceInterval * i)), endTime, (lowValue + (sectionPriceInterval * i)), xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+            array.push(lines, line.new((startTime + (sectionTimeInterval * i)), highValue, (startTime + (sectionTimeInterval * i)), lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+    //Eighth lines
+    if eighth
+        sectionPriceInterval = ((highValue - lowValue) / 8)
+        sectionTimeInterval = ((endTime - startTime) / 8)
+        for i = 1 to 7
+            array.push(lines, line.new(startTime, (lowValue + (sectionPriceInterval * i)), endTime, (lowValue + (sectionPriceInterval * i)), xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+            array.push(lines, line.new((startTime + (sectionTimeInterval * i)), highValue, (startTime + (sectionTimeInterval * i)), lowValue, xloc = xloc.bar_time, style = line.style_dashed, color = insideLines, width = widthLines))
+
+
+if barstate.islast and square_9
+    highestValuePrincipal = getHighestValue(bars, barsFromStart)
+    lowestValuePrincipal = getLowestValue(bars, barsFromStart)
+    midValuePrincipal = lowestValuePrincipal + ((highestValuePrincipal - lowestValuePrincipal) / 2)
+    intervalTime = endDate - startDate
+
+    //Draw principal square
+    drawSquares(startDate,endDate, highestValuePrincipal, lowestValuePrincipal, midValuePrincipal)
+    //Right Square
+    drawSquares(endDate, (startDate + int(externalC * 1.518 * 60 * 1000)), highestValuePrincipal, lowestValuePrincipal, midValuePrincipal)
+    //Top Right Square
+    drawSquares(endDate, (startDate + int(externalC * 1.518 * 60 * 1000)), (highestValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)), highestValuePrincipal, (midValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)))
+    //Bottom Right Square
+    drawSquares(endDate, (startDate + int(externalC * 1.518 * 60 * 1000)), lowestValuePrincipal, lowestValuePrincipal - (highestValuePrincipal - lowestValuePrincipal), (midValuePrincipal - (highestValuePrincipal - lowestValuePrincipal)))
+    //Right Right Square
+    drawSquares(startDate + int(externalC * 1.518 * 60 * 1000), (startDate + int(externalC * 2.236 * 60 * 1000)), highestValuePrincipal, lowestValuePrincipal, midValuePrincipal)
+    //Top Right Right Square
+    drawSquares(startDate + int(externalC * 1.518 * 60 * 1000), (startDate + int(externalC * 2.236 * 60 * 1000)), (highestValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)), highestValuePrincipal, (midValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)))
+    //Bottom Right Right Square
+    drawSquares(startDate + int(externalC * 1.518 * 60 * 1000), (startDate + int(externalC * 2.236 * 60 * 1000)), lowestValuePrincipal, lowestValuePrincipal - (highestValuePrincipal - lowestValuePrincipal), (midValuePrincipal - (highestValuePrincipal - lowestValuePrincipal)))
+   //Right Right Square
+    drawSquares(startDate + int(externalC * 2.236 * 60 * 1000), (startDate + int(externalC * 3.618 * 60 * 1000)), highestValuePrincipal, lowestValuePrincipal, midValuePrincipal)
+    //Top Right Right Square
+    drawSquares(startDate + int(externalC * 2.236 * 60 * 1000), (startDate + int(externalC * 3.618 * 60 * 1000)), (highestValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)), highestValuePrincipal, (midValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)))
+    //Bottom Right Right Square
+    drawSquares(startDate + int(externalC * 2.236 * 60 * 1000), (startDate + int(externalC * 3.618 * 60 * 1000)), lowestValuePrincipal, lowestValuePrincipal - (highestValuePrincipal - lowestValuePrincipal), (midValuePrincipal - (highestValuePrincipal - lowestValuePrincipal)))
+   //Right Right Square
+    drawSquares(startDate + int(externalC * 3.618 * 60 * 1000), (startDate + int(externalC * 4.236 * 60 * 1000)), highestValuePrincipal, lowestValuePrincipal, midValuePrincipal)
+    //Top Right Right Square
+    drawSquares(startDate + int(externalC * 3.618 * 60 * 1000), (startDate + int(externalC * 4.236 * 60 * 1000)), (highestValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)), highestValuePrincipal, (midValuePrincipal + (highestValuePrincipal - lowestValuePrincipal)))
+    //Bottom Right Right Square
+    drawSquares(startDate + int(externalC * 3.618 * 60 * 1000), (startDate + int(externalC * 4.236 * 60 * 1000)), lowestValuePrincipal, lowestValuePrincipal - (highestValuePrincipal - lowestValuePrincipal), (midValuePrincipal - (highestValuePrincipal - lowestValuePrincipal)))
+
+hfib_ma_5 = ta.ema(high, 5)
+hfib_ma_8 = ta.ema(high, 8)
+hfib_ma_13 = ta.ema(high, 13)
+hfib_ma_21 = ta.ema(high, 21)
+hfib_ma_34 = ta.ema(high, 34)
+hfib_ma_55 = ta.ema(high, 55)
+hfib_ma_89 = ta.ema(high, 89)
+hfib_ma_144 = ta.ema(high, 144)
+hfib_ma_233 = ta.ema(high, 233)
+hfib_ma_377 = ta.ema(high, 377)
+hfib_ma_610 = ta.ema(high, 610)
+hfib_ma_987 = ta.ema(high, 987)
+hfib_ma_1597 = ta.ema(high, 1597)
+hfib_ma_2584 = ta.ema(high, 2584)
+hfib_ma_4181 = ta.ema(high, 4181)
+
+fib_high = (hfib_ma_5 + hfib_ma_8 + hfib_ma_13 + hfib_ma_21 + hfib_ma_34 + hfib_ma_55 + hfib_ma_89 + hfib_ma_144 + hfib_ma_233 + hfib_ma_377 + hfib_ma_610 + hfib_ma_987 + hfib_ma_1597 + hfib_ma_2584 + hfib_ma_4181) / 15
+
+plot(fib_high, color = (fib_high < close) ? color.blue : color.orange)
+
+lfib_ma_5 = ta.ema(low, 5)
+lfib_ma_8 = ta.ema(low, 8)
+lfib_ma_13 = ta.ema(low, 13)
+lfib_ma_21 = ta.ema(low, 21)
+lfib_ma_34 = ta.ema(low, 34)
+lfib_ma_55 = ta.ema(low, 55)
+lfib_ma_89 = ta.ema(low, 89)
+lfib_ma_144 = ta.ema(low, 144)
+lfib_ma_233 = ta.ema(low, 233)
+lfib_ma_377 = ta.ema(low, 377)
+lfib_ma_610 = ta.ema(low, 610)
+lfib_ma_987 = ta.ema(low, 987)
+lfib_ma_1597 = ta.ema(low, 1597)
+lfib_ma_2584 = ta.ema(low, 2584)
+lfib_ma_4181 = ta.ema(low, 4181)
+
+fib_low = (lfib_ma_5 + lfib_ma_8 + lfib_ma_13 + lfib_ma_21 + lfib_ma_34 + lfib_ma_55 + lfib_ma_89 + lfib_ma_144 + lfib_ma_233 + lfib_ma_377 + lfib_ma_610 + lfib_ma_987 + lfib_ma_1597 + lfib_ma_2584 + lfib_ma_4181) / 15
+
+plot(fib_low, color = (fib_low < close) ? color.blue : color.orange)
