@@ -1,0 +1,212 @@
+//@version=4
+study(title="RSI cyclic smoothed x3", shorttitle="cRSI x3")
+
+// ===================================================================
+// --- CRSI #1 (original)
+// ===================================================================
+src = close
+domcycle = input(20, minval=10, title="Dominant Cycle Length #1")
+crsi = 0.0
+cyclelen = domcycle / 2
+vibration = 10
+leveling = 10.0
+cyclicmemory = domcycle * 2
+
+h1 = hline(30, color=color.silver, linestyle=hline.style_dashed)
+h2 = hline(70, color=color.silver, linestyle=hline.style_dashed)
+
+torque = 2.0 / (vibration + 1)
+phasingLag = (vibration - 1) / 2.0
+
+up = rma(max(change(src), 0), cyclelen)
+down = rma(-min(change(src), 0), cyclelen)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
+crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
+
+lmax = -999999.0
+lmin = 999999.0
+for i = 0 to cyclicmemory - 1 by 1
+    if nz(crsi[i], -999999.0) > lmax
+        lmax := nz(crsi[i])
+    else
+        if nz(crsi[i], 999999.0) < lmin
+            lmin := nz(crsi[i])
+
+mstep = (lmax - lmin) / 100
+aperc = leveling / 100
+
+db = 0.0
+for steps = 0 to 100 by 1
+    testvalue = lmin + mstep * steps
+    below = 0
+    for m = 0 to cyclicmemory - 1 by 1
+        below := below + iff(crsi[m] < testvalue, 1, 0)
+    ratio = below / cyclicmemory
+    if ratio >= aperc
+        db := testvalue
+        break
+
+ub = 0.0
+for steps = 0 to 100 by 1
+    testvalue = lmax - mstep * steps
+    above = 0
+    for m = 0 to cyclicmemory - 1 by 1
+        above := above + iff(crsi[m] >= testvalue, 1, 0)
+    ratio = above / cyclicmemory
+    if ratio >= aperc
+        ub := testvalue
+        break
+
+lowband = plot(db, "LowBand #1", color=color.aqua)
+highband = plot(ub, "HighBand #1", color=color.aqua)
+fill(h1, h2, color=color.silver, transp=90)
+fill(lowband, highband, color=color.gray, transp=90)
+plot(crsi, "CRSI #1", color=color.white)
+
+
+// Detect break above HighBand
+hbBreak = crossunder(crsi, ub)
+
+// Store previous HighBand break value
+var float prevHbValue = na
+
+if hbBreak
+    labelText = na(prevHbValue) ? "HB" : crsi > prevHbValue ? "HH" : "LH"    
+    label.new(        bar_index,        crsi,        labelText,        style=label.style_label_down,        color=labelText == "HH" ? color.green : color.orange,        textcolor=color.white,        size=size.small    )
+    prevHbValue := crsi
+
+// Detect break above HighBand
+lbBreak = crossover(crsi, db)
+
+// Store previous HighBand break value
+var float prevLbValue = na
+
+if lbBreak
+    labelText = na(prevLbValue) ? "LB" : crsi > prevLbValue ? "LL" : "HL"    
+    label.new(        bar_index,        crsi,        labelText,        style=label.style_label_down,        color=labelText == "HL" ? color.orange : color.red,        textcolor=color.white,        size=size.small    )
+    prevLbValue := crsi
+
+// ===================================================================
+// --- CRSI #2
+// ===================================================================
+src2 = close
+domcycle2 = input(30, minval=10, title="Dominant Cycle Length #2")
+crsi2 = 0.0
+cyclelen2 = domcycle2 / 2
+vibration2 = 10
+leveling2 = 10.0
+cyclicmemory2 = domcycle2 * 2
+
+h1_2 = hline(30, color=color.silver, linestyle=hline.style_dashed)
+h2_2 = hline(70, color=color.silver, linestyle=hline.style_dashed)
+
+torque2 = 2.0 / (vibration2 + 1)
+phasingLag2 = (vibration2 - 1) / 2.0
+
+up2 = rma(max(change(src2), 0), cyclelen2)
+down2 = rma(-min(change(src2), 0), cyclelen2)
+rsi2 = down2 == 0 ? 100 : up2 == 0 ? 0 : 100 - 100 / (1 + up2 / down2)
+crsi2 := torque2 * (2 * rsi2 - rsi2[phasingLag2]) + (1 - torque2) * nz(crsi2[1])
+
+lmax2 = -999999.0
+lmin2 = 999999.0
+for i = 0 to cyclicmemory2 - 1 by 1
+    if nz(crsi2[i], -999999.0) > lmax2
+        lmax2 := nz(crsi2[i])
+    else
+        if nz(crsi2[i], 999999.0) < lmin2
+            lmin2 := nz(crsi2[i])
+
+mstep2 = (lmax2 - lmin2) / 100
+aperc2 = leveling2 / 100
+
+db2 = 0.0
+for steps = 0 to 100 by 1
+    testvalue2 = lmin2 + mstep2 * steps
+    below2 = 0
+    for m = 0 to cyclicmemory2 - 1 by 1
+        below2 := below2 + iff(crsi2[m] < testvalue2, 1, 0)
+    ratio2 = below2 / cyclicmemory2
+    if ratio2 >= aperc2
+        db2 := testvalue2
+        break
+
+ub2 = 0.0
+for steps = 0 to 100 by 1
+    testvalue2 = lmax2 - mstep2 * steps
+    above2 = 0
+    for m = 0 to cyclicmemory2 - 1 by 1
+        above2 := above2 + iff(crsi2[m] >= testvalue2, 1, 0)
+    ratio2 = above2 / cyclicmemory2
+    if ratio2 >= aperc2
+        ub2 := testvalue2
+        break
+
+lowband2 = plot(db2, "LowBand #2", color=color.orange)
+highband2 = plot(ub2, "HighBand #2", color=color.orange)
+fill(h1_2, h2_2, color=color.silver, transp=90)
+fill(lowband2, highband2, color=color.gray, transp=90)
+plot(crsi2, "CRSI #2", color=color.orange)
+
+
+// ===================================================================
+// --- CRSI #3
+// ===================================================================
+src3 = close
+domcycle3 = input(40, minval=10, title="Dominant Cycle Length #3")
+crsi3 = 0.0
+cyclelen3 = domcycle3 / 2
+vibration3 = 10
+leveling3 = 10.0
+cyclicmemory3 = domcycle3 * 2
+
+h1_3 = hline(30, color=color.silver, linestyle=hline.style_dashed)
+h2_3 = hline(70, color=color.silver, linestyle=hline.style_dashed)
+
+torque3 = 2.0 / (vibration3 + 1)
+phasingLag3 = (vibration3 - 1) / 2.0
+
+up3 = rma(max(change(src3), 0), cyclelen3)
+down3 = rma(-min(change(src3), 0), cyclelen3)
+rsi3 = down3 == 0 ? 100 : up3 == 0 ? 0 : 100 - 100 / (1 + up3 / down3)
+crsi3 := torque3 * (2 * rsi3 - rsi3[phasingLag3]) + (1 - torque3) * nz(crsi3[1])
+
+lmax3 = -999999.0
+lmin3 = 999999.0
+for i = 0 to cyclicmemory3 - 1 by 1
+    if nz(crsi3[i], -999999.0) > lmax3
+        lmax3 := nz(crsi3[i])
+    else
+        if nz(crsi3[i], 999999.0) < lmin3
+            lmin3 := nz(crsi3[i])
+
+mstep3 = (lmax3 - lmin3) / 100
+aperc3 = leveling3 / 100
+
+db3 = 0.0
+for steps = 0 to 100 by 1
+    testvalue3 = lmin3 + mstep3 * steps
+    below3 = 0
+    for m = 0 to cyclicmemory3 - 1 by 1
+        below3 := below3 + iff(crsi3[m] < testvalue3, 1, 0)
+    ratio3 = below3 / cyclicmemory3
+    if ratio3 >= aperc3
+        db3 := testvalue3
+        break
+
+ub3 = 0.0
+for steps = 0 to 100 by 1
+    testvalue3 = lmax3 - mstep3 * steps
+    above3 = 0
+    for m = 0 to cyclicmemory3 - 1 by 1
+        above3 := above3 + iff(crsi3[m] >= testvalue3, 1, 0)
+    ratio3 = above3 / cyclicmemory3
+    if ratio3 >= aperc3
+        ub3 := testvalue3
+        break
+
+lowband3 = plot(db3, "LowBand #3", color=color.lime)
+highband3 = plot(ub3, "HighBand #3", color=color.lime)
+fill(h1_3, h2_3, color=color.rgb(178, 181, 190, 84), transp=90)
+fill(lowband3, highband3, color=color.rgb(120, 123, 134, 78), transp=90)
+plot(crsi3, "CRSI #3", color=color.lime)
