@@ -1,0 +1,17 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © rouzikrm
+
+//@version=6
+indicator(title="FLD's - Future Lines of Demarcation (v5, Vertical Mirror)", overlay=true)
+
+Period = input.int(title="Period", defval=100, minval=3)
+src    = input.source(title="Source", defval=hl2)
+
+// Vertical mirror: invert values
+baseline = ta.sma(src, Period)
+FLD = baseline - ((src - baseline)*1.5)
+
+plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.aqua, offset=Period)
+plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.green, offset=Period/2)
+plot(src, title="FLD ()", linewidth=1, color=color.rgb(175, 76, 137), offset=Period/2)
+plot(src, title="FLD ()", linewidth=1, color=color.rgb(238, 255, 0), offset=Period)
