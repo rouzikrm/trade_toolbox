@@ -1,0 +1,105 @@
+//@version=5
+indicator("Calibrated EFI Surge Detection with Trend on Each Marker", shorttitle="Calib EFI Surge + Trend", overlay=true)
+
+var bufferSize = 10
+var volumeSurgeBucket = array.new_float(bufferSize+1)
+var directionBucket = array.new_bool(bufferSize+1)
+// ─────────────── Input Parameters ───────────────
+efiLength          = input.int(13,  title="EFI Length",                 minval=1)
+efiAvgPeriod       = input.int(20,  title="Calibrated EFI Avg Period",  minval=1)
+volPeriod          = input.int(50,  title="Volatility Period",          minval=1)
+surgeMultiplier    = input.float(6, title="Surge Multiplier",           step=0.1)
+surgeRateThreshold = input.float(99.0, title="Surge Rate (%) Threshold",  step=0.1)
+trendPeriod        = input.int(50,  title="Trend MA Period",            minval=1)
+
+
+// User inputs
+shadowFactor = input.float(2.0, title="Shadow Factor (Multiplier)", step=0.1, tooltip="Wick length must be greater than body length * Shadow Factor")
+minBody      = input.float(0.0, title="Minimum Body Size", step=0.1, tooltip="Optional minimum body size to filter out dojis")
+
+literalStrength = input.float(0.0, title="Filter tick strength", step=0.1, tooltip="Filter tick strength")
+// ─────────────── Persistent Variable for Label Tracking ───────────────
+var string lastSurgeLabel = ""
+
+// ─────────────── EFI Calculation & Volatility ───────────────
+// Calculate EFI
+efiValue = ta.ema((close - close[1]) * volume, efiLength)
+// Compute volatility as the standard deviation of percentage returns
+ret        = 100 * (close - close[1]) / close[1]
+volatility = ta.stdev(ret, volPeriod)
+// Calibrate EFI by normalizing it with volatility
+calibratedEFI = volatility != 0 ? efiValue / volatility : 0
+absCalibratedEFI = math.abs(calibratedEFI)
+
+// ─────────────── Baseline & Derived Metrics for Surge Detection ───────────────
+calibratedEFIAvg = ta.sma(absCalibratedEFI, efiAvgPeriod)
+calibratedEFIRatio = absCalibratedEFI / calibratedEFIAvg
+calibratedEFIROC = absCalibratedEFI[1] != 0 ? 100 * (absCalibratedEFI - absCalibratedEFI[1]) / absCalibratedEFI[1] : 0
+
+// ─────────────── Early Surge Detection ───────────────
+crossover_condition = ta.crossover(calibratedEFIRatio, surgeMultiplier)
+earlySurge = crossover_condition and (calibratedEFIROC > surgeRateThreshold)
+
+// ─────────────── Trend Determination ───────────────
+trendMA = ta.ema(close, trendPeriod)
+trendUp = close > trendMA
+trendIndicator = trendUp ? "Uptrend" : "Downtrend"
+
+// Calculate candle components
+body       = math.abs(close - open)
+lowerWick  = math.min(open, close) - low
+upperWick  = high - math.max(open, close)
+
+// Define conditions:
+// For bearish candles: candle is red (close < open) and the lower wick is longer than (body * shadowFactor)
+bearLongLower = close < open and body > minBody and lowerWick > body * shadowFactor
+
+// For bullish candles: candle is green (close > open) and the upper wick is longer than (body * shadowFactor)
+bullLongUpper = close > open and body > minBody and upperWick > body * shadowFactor
+
+
+
+// ─────────────── Plotting ───────────────
+//plot(trendMA, title="Trend MA", color=color.purple)
+plotshape(earlySurge and bullLongUpper , title="EFI Early Surge Signal",      location=location.belowbar, color=#ff1bfb, style= shape.triangleup  , size=size.small)
+plotshape(earlySurge and bearLongLower , title="EFI Early Surge Signal",      location=location.abovebar, color=color.rgb(68, 0, 255), style= shape.triangledown  , size=size.small)
+
+// Add price range labels
+if (earlySurge and bullLongUpper)
+    label.new(bar_index, 0, str.tostring(math.round(calibratedEFIRatio/ (high - low),2)), yloc=yloc.abovebar,          style=label.style_none, textcolor=#ff1bfb, size=size.small)
+    label.new(bar_index, 0, str.tostring((high - low)), yloc=yloc.belowbar,          style=label.style_none, textcolor=color.rgb(255, 244, 27), size=size.small)
+    // Add new closing price and remove oldest if buffer is full
+    array.push(volumeSurgeBucket, math.round(calibratedEFIRatio/ (high - low),2))
+    if array.size(volumeSurgeBucket) > bufferSize
+        array.shift(volumeSurgeBucket) // Remove the oldest element
+    array.push(directionBucket, true)
+    if array.size(directionBucket) > bufferSize
+        array.shift(directionBucket) // Remove the oldest element
+
+    
+if (earlySurge and bearLongLower)
+    label.new(bar_index, 0, str.tostring(math.round(calibratedEFIRatio/ (high - low),2)), yloc=yloc.belowbar,          style=label.style_none, textcolor=color.rgb(255, 255, 255), size=size.small)
+    label.new(bar_index, 0,  str.tostring((high - low)), yloc=yloc.abovebar,          style=label.style_none, textcolor=color.rgb(255, 255, 255), size=size.small)
+    array.push(volumeSurgeBucket, math.round(calibratedEFIRatio/ (high - low),2))
+    if array.size(volumeSurgeBucket) > bufferSize
+        array.shift(volumeSurgeBucket) // Remove the oldest element
+    array.push(directionBucket, false)
+    if array.size(directionBucket) > bufferSize
+        array.shift(directionBucket) // Remove the oldest element
+
+
+
+bgcolor(directionBucket.get(1) != directionBucket.get(0) and directionBucket.get(2) == directionBucket.get(1) and volumeSurgeBucket.get(0)> volumeSurgeBucket.get(1)   ? #3dcafda0 : na)
+
+
+// ─────────────── Annotate Surges ───────────────
+//if earlySurge
+//    surgeLabelText = "EFI Surge: " + trendIndicator
+//    if surgeLabelText != lastSurgeLabel
+//        label.new(bar_index, low, surgeLabelText, style=label.style_label_up, 
+//             color=(trendUp ? color.green : color.red), textcolor=color.white, size=size.tiny)
+//        lastSurgeLabel := surgeLabelText
+
+// ─────────────── Alert Condition ───────────────
+alertcondition(earlySurge, title="Calibrated EFI Early Surge", 
+     message="Calibrated EFI early surge detected using Shapiro algorithm.")
