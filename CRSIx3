@@ -1,5 +1,5 @@
 //@version=4
-study(title="RSI cyclic smoothed x3", shorttitle="cRSI x3")
+study(title="RSI cyclic smoothed x4", shorttitle="cRSI x4")
 
 // ===================================================================
 // --- CRSI #1 (original)
@@ -71,9 +71,9 @@ hbBreak = crossunder(crsi, ub)
 var float prevHbValue = na
 
 if hbBreak
-    labelText = na(prevHbValue) ? "HB" : crsi > prevHbValue ? "HH" : "LH"    
-    label.new(        bar_index,        crsi,        labelText,        style=label.style_label_down,        color=labelText == "HH" ? color.green : color.orange,        textcolor=color.white,        size=size.small    )
-    prevHbValue := crsi
+    labelText = na(prevHbValue) ? "HB" : crsi[1] > prevHbValue ? "HH" : "LH"    
+    label.new(        bar_index,        crsi[1],        labelText,        style=label.style_label_down,        color=labelText == "HH" ? color.green : color.orange,        textcolor=color.white,        size=size.small    )
+    prevHbValue := crsi[1]
 
 // Detect break above HighBand
 lbBreak = crossover(crsi, db)
@@ -82,9 +82,9 @@ lbBreak = crossover(crsi, db)
 var float prevLbValue = na
 
 if lbBreak
-    labelText = na(prevLbValue) ? "LB" : crsi > prevLbValue ? "LL" : "HL"    
-    label.new(        bar_index,        crsi,        labelText,        style=label.style_label_down,        color=labelText == "HL" ? color.orange : color.red,        textcolor=color.white,        size=size.small    )
-    prevLbValue := crsi
+    labelText = na(prevLbValue) ? "LB" : crsi[1] < prevLbValue ? "LL" : "HL"    
+    label.new(        bar_index,        crsi[1],        labelText,        style=label.style_label_down,        color=labelText == "HL" ? color.orange : color.red,        textcolor=color.white,        size=size.small    )
+    prevLbValue := crsi[1]
 
 // ===================================================================
 // --- CRSI #2
