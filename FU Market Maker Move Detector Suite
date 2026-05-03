@@ -481,3 +481,363 @@ plotshape(sell ? high : na, "Sell Label"
   , size      = size.tiny)
 
 //-----------------------------------------------------------------------------}
+
+
+// ===================================================================
+// --- CRSI #1 (original)
+// ===================================================================
+src = close
+domcycle = input.int(20, minval=10, title="Dominant Cycle Length #1")
+bandmult = input.float(0.1,minval=0.1,title = "Band Sensitivity adjust")
+crsi = 0.0
+cyclelen = domcycle / 2
+vibration = 10
+leveling = 10.0
+cyclicmemory = domcycle * 2
+
+h1 = hline(30, color=color.silver, linestyle=hline.style_dashed)
+h2 = hline(70, color=color.silver, linestyle=hline.style_dashed)
+
+torque = 2.0 / (vibration + 1)
+phasingLag = (vibration - 1) / 2.0
+
+up = ta.rma(math.max(ta.change(src), 0), cyclelen)
+down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
+crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
+
+lmax = -999999.0
+lmin = 999999.0
+for i = 0 to cyclicmemory - 1 by 1
+    if nz(crsi[i], -999999.0) > lmax
+        lmax := nz(crsi[i])
+    else
+        if nz(crsi[i], 999999.0) < lmin
+            lmin := nz(crsi[i])
+
+mstep = (lmax - lmin) / 100
+aperc = leveling / 100
+
+db = 0.0
+for steps = 0 to 100 by 1
+    testvalue = lmin + mstep * steps
+    below = 0
+    for m = 0 to cyclicmemory - 1 by 1
+        below := below + (crsi[m] < testvalue ? 1 : 0)
+    ratio = below / cyclicmemory
+    if ratio >= aperc
+        db := testvalue
+        break
+
+ub = 0.0
+for steps = 0 to 100 by 1
+    testvalue = lmax - mstep * steps
+    above = 0
+    for m = 0 to cyclicmemory - 1 by 1
+        above := above + (crsi[m] >= testvalue ? 1 : 0)
+    ratio = above / cyclicmemory
+    if ratio >= aperc
+        ub := testvalue
+        break
+
+
+// =============================================================================
+//                                  SETTINGS
+// =============================================================================
+
+textt = input.string("Normal", 'Signal Style', options = ["Normal", "Minimal"], group = 'Signal Style')
+
+cycle_group = "1. Cycle Analysis Engine"
+pivot_lookback = input.int(5, "Pivot Lookback (Sensitivity)", group=cycle_group, tooltip="Strength of the swing points to detect.")
+max_cycles_to_store = input.int(50, "Cycles to Store in Memory", group=cycle_group, tooltip="Number of past cycles for each regime to average.")
+
+regime_group = "2. Market Regime Engine"
+adx_len = input.int(14, "ADX Length", group=regime_group)
+adx_trend_threshold = input.int(23, "ADX Trend Threshold", group=regime_group)
+chop_len = input.int(14, "Choppiness Length", group=regime_group)
+chop_range_threshold = input.int(60, "Choppiness Range Threshold", group=regime_group)
+rsi_len = input.int(14, "RSI Length", group=regime_group)
+rsi_ob = input.int(75, "RSI Overbought", group=regime_group)
+rsi_os = input.int(25, "RSI Oversold", group=regime_group)
+
+confirmation_group = "3. Signal Confirmation"
+use_price_confirm = input.bool(true, "Require Price Confirmation (RSI Extreme)", group=confirmation_group, tooltip="For a signal, the timing condition must be met AND RSI must be in an extreme zone.")
+
+// =============================================================================
+//                                  DATA & LOGIC
+// =============================================================================
+
+// --- Data Storage Arrays ---
+var trending_cycles = array.new_int()
+var ranging_cycles = array.new_int()
+var reversal_cycles = array.new_int()
+var last_pivot_high_bar = 0
+var last_pivot_low_bar = 0
+
+// --- Market Regime Analysis ---
+[_, _, adx_val] = ta.dmi(adx_len, adx_len)
+chop_val = 100 * (math.log10(math.sum(ta.atr(1), chop_len) / (ta.highest(chop_len) - ta.lowest(chop_len))) / math.log10(chop_len))
+rsi_val = ta.rsi(close, rsi_len)
+
+is_trending = adx_val > adx_trend_threshold
+is_ranging = chop_val > chop_range_threshold or adx_val < 20
+is_reversal_condition = rsi_val > rsi_ob or rsi_val < rsi_os
+
+f_getRegime() =>
+    is_reversal_condition[1] ? 3 : is_trending[1] ? 2 : 1
+string regime_name = f_getRegime() == 3 ? "Reversal" : f_getRegime() == 2 ? "Trending" : "Ranging"
+
+// --- Cycle Detection & Learning ---
+pivot_high_price = ta.pivothigh(high, pivot_lookback, pivot_lookback)
+pivot_low_price = ta.pivotlow(low, pivot_lookback, pivot_lookback)
+
+if not na(pivot_high_price)
+    int current_pivot_bar = bar_index - pivot_lookback
+    if last_pivot_high_bar != 0
+        int cycle_len = current_pivot_bar - last_pivot_high_bar
+        int regime_at_cycle_end = f_getRegime()
+        if regime_at_cycle_end == 2
+            array.push(trending_cycles, cycle_len)
+        else if regime_at_cycle_end == 1
+            array.push(ranging_cycles, cycle_len)
+        else // regime is 3
+            array.push(reversal_cycles, cycle_len)
+    last_pivot_high_bar := current_pivot_bar
+
+if not na(pivot_low_price)
+    int current_pivot_bar = bar_index - pivot_lookback
+    if last_pivot_low_bar != 0
+        int cycle_len = current_pivot_bar - last_pivot_low_bar
+        int regime_at_cycle_end = f_getRegime()
+        if regime_at_cycle_end == 2
+            array.push(trending_cycles, cycle_len)
+        else if regime_at_cycle_end == 1
+            array.push(ranging_cycles, cycle_len)
+        else // regime is 3
+            array.push(reversal_cycles, cycle_len)
+    last_pivot_low_bar := current_pivot_bar
+
+if array.size(trending_cycles) > max_cycles_to_store
+    array.shift(trending_cycles)
+if array.size(ranging_cycles) > max_cycles_to_store
+    array.shift(ranging_cycles)
+if array.size(reversal_cycles) > max_cycles_to_store
+    array.shift(reversal_cycles)
+
+// --- Adaptive Cycle Length Calculation ---
+float avg_trending_cycle = array.size(trending_cycles) > 0 ? array.avg(trending_cycles) : 50
+float avg_ranging_cycle = array.size(ranging_cycles) > 0 ? array.avg(ranging_cycles) : 80
+float avg_reversal_cycle = array.size(reversal_cycles) > 0 ? array.avg(reversal_cycles) : 30
+
+int current_regime = f_getRegime()
+float adaptive_cycle_length = current_regime == 3 ? avg_reversal_cycle : current_regime == 2 ? avg_trending_cycle : avg_ranging_cycle
+
+// --- Countdown & Signal Logic ---
+last_cycle_point_bar = math.max(last_pivot_high_bar, last_pivot_low_bar)
+bool last_point_was_high = last_pivot_high_bar > last_pivot_low_bar
+
+int bars_since_last_cycle_point = bar_index - last_cycle_point_bar
+bool is_time_due = bars_since_last_cycle_point >= adaptive_cycle_length
+
+// NIHAI ÇÖZÜM: Karmaşık uyumsuzluk mantığı, hatasız çalışan basit bir RSI durum kontrolü ile değiştirildi.
+bool price_confirmation = (last_point_was_high and is_reversal_condition and rsi_val < 50) or (not last_point_was_high and is_reversal_condition and rsi_val > 50)
+
+// Final Signal
+buy_signal = is_time_due and last_point_was_high and (price_confirmation or not use_price_confirm) 
+sell_signal = is_time_due and not last_point_was_high and (price_confirmation or not use_price_confirm) 
+//buy_signal2 = is_time_due and last_point_was_high and (price_confirmation or not use_price_confirm) and crsi < db * (1-bandmult)
+//sell_signal2 = is_time_due and not last_point_was_high and (price_confirmation or not use_price_confirm) and crsi > ub * (1+bandmult)
+
+// Reset counter after signal
+if buy_signal or sell_signal
+    last_pivot_high_bar := buy_signal ? 0 : bar_index
+    last_pivot_low_bar := sell_signal ? 0 : bar_index
+
+// =============================================================================
+//                               VISUALIZATION
+// =============================================================================
+// Dashboard
+var tbl = table.new(position.bottom_right, 2, 3, border_width=1)
+if barstate.islast
+    table.cell(tbl, 0, 0, "Cyclic Reversal Engine", 2, 1, bgcolor=color.gray)
+    table.cell(tbl, 0, 1, "Market Regime", bgcolor=color.new(color.gray, 80))
+    table.cell(tbl, 1, 1, regime_name, text_color=color.white, bgcolor=color.new(color.blue, 70))
+    table.cell(tbl, 0, 2, "Adaptive Cycle / Bar Count", bgcolor=color.new(color.gray, 80))
+    table.cell(tbl, 1, 2, str.tostring(adaptive_cycle_length, "#") + " / " + str.tostring(bars_since_last_cycle_point), text_color=color.white, bgcolor= is_time_due ? color.new(color.orange, 50) : color.new(color.gray, 80))
+
+// Signals
+y1 = low - (ta.atr(30) * 2)
+y2 = high + (ta.atr(30) * 2)
+buytext = textt == "Normal" ? 'Estimated Bottom ▲\n(Down Cycle End)' : 'Buy ▲'
+selltext = textt == "Normal" ? 'Estimated Top ▼\n(Up Cycle End)' : 'Sell ▼'
+
+if buy_signal
+    label.new(bar_index , y1, buytext, color=color.rgb(6, 151, 37), style=label.style_label_up, textcolor=color.white, size=size.normal)
+if sell_signal
+    label.new(bar_index , y2, selltext, color=color.rgb(255, 59, 59), style=label.style_label_down, textcolor=color.white, size=size.normal)
+
+// Alerts
+alertcondition(buy_signal, "Cyclic Reversal BUY", "Cyclic Reversal Engine: BUY Signal | Adaptive Cycle Target Met")
+alertcondition(sell_signal, "Cyclic Reversal SELL", "Cyclic Reversal Engine: SELL Signal | Adaptive Cycle Target Met")
+
+// =============================================================================
+//                                  Settings (INPUTS)
+// =============================================================================
+// --- Anomali Tespit Modülü (ATM) Ayarları ---
+atm_tab2 = "Anomaly Detection Module (ATM)"
+atm_lookback2 = input.int(21, "Lookback Period", group=atm_tab2, tooltip="Hacim ve volatilite ortalamaları için kullanılacak mum sayısı.")
+volatility_multiplier2 = input.float(1.9, "Volatility Multiplier", group=atm_tab2, tooltip="Normal bir mum boyunun kaç katı 'anormal' sayılacak.")
+volume_multiplier2 = input.float(1.618, "Volume Multiplier", group=atm_tab2, tooltip="Normal hacmin kaç katı 'anormal' sayılacak.")
+
+// --- Likidite Bölgesi Modülü (LBM) Ayarları ---
+lbm_tab2 = "Liquidity Zone Module (LBM)"
+lbm_pivot_lookback2 = input.int(55, "Pivot Lookback", group=lbm_tab2, tooltip="Bir swing noktasını teyit etmek için gereken sağ ve sol mum sayısı.")
+show_liquidity_lines2 = input.bool(true, "Show Liquidity Lines", group=lbm_tab2, tooltip="Tespit edilen swing noktalarından çizilen likidite hatlarını göster/gizle.")
+line_width2 = input.int(1, "Line Width", group=lbm_tab2)
+high_line_color2 = input.color(color.new(#d12208, 40), "High Lines Color", group=lbm_tab2)
+low_line_color2 = input.color(color.new(#018208, 40), "Low Lines Color", group=lbm_tab2)
+
+// --- Sinyal ve Görsel Ayarlar ---
+signal_tab2 = "Signal & Visual Settings"
+use_eam_confirmation2 = input.bool(false, "Use Absorption Confirmation for Signals", group=signal_tab2, tooltip="Sinyallerin doğruluğunu artırmak için 'Emilim Analizi' teyidi zorunlu olsun mu?")
+show_anomaly_bg2 = input.bool(true, "Highlight Anomaly Candles", group=signal_tab2, tooltip="ATM tarafından tespit edilen anormal mumların arka planını renklendir.")
+
+
+// =============================================================================
+//                                  Calculation
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// | MODULE 1: Anomaly Detection Module (ADM)                                   |
+// -----------------------------------------------------------------------------
+atr2 = ta.atr(atm_lookback2)
+avg_volume2 = ta.sma(volume, atm_lookback2)
+
+is_volatility_spike2 = (high - low) > atr2 * volatility_multiplier2
+is_volume_spike2 = volume > avg_volume2 * volume_multiplier2
+
+is_anomaly_candle2 = is_volatility_spike2 and is_volume_spike2
+
+// -----------------------------------------------------------------------------
+// | MODULE 2: Liquidity Zone Module (LZM)                                      |
+// -----------------------------------------------------------------------------
+pivot_high_price2 = ta.pivothigh(high, lbm_pivot_lookback2, lbm_pivot_lookback2)
+pivot_low_price2 = ta.pivotlow(low, lbm_pivot_lookback2, lbm_pivot_lookback2)
+
+var float last_pivot_high2 = na
+var float last_pivot_low2 = na
+
+if not na(pivot_high_price2)
+    last_pivot_high2 := pivot_high_price2
+if not na(pivot_low_price2)
+    last_pivot_low2 := pivot_low_price2
+
+if show_liquidity_lines2
+    if not na(pivot_high_price2)
+        line.new(bar_index - lbm_pivot_lookback2, pivot_high_price2, bar_index, pivot_high_price2, color=high_line_color2, width=line_width2, style=line.style_dashed)
+    if not na(pivot_low_price2)
+        line.new(bar_index - lbm_pivot_lookback2, pivot_low_price2, bar_index, pivot_low_price2, color=low_line_color2, width=line_width2, style=line.style_dashed)
+        
+// -----------------------------------------------------------------------------
+// | MODULE 3: Absorption Analysis Module (AAM)                                 |
+// -----------------------------------------------------------------------------
+close_position_in_range2 = (close - low) / (high - low)
+
+is_red_candle2 = close < open
+is_green_candle2 = close > open
+
+is_bullish_absorption2 = is_red_candle2 and is_volume_spike2 and close_position_in_range2 > 0.5
+is_bearish_absorption2 = is_green_candle2 and is_volume_spike2 and close_position_in_range2 < 0.5
+
+
+// =============================================================================
+//                                 Signal Logic
+// =============================================================================
+
+long_signal_condition2 = 
+  is_anomaly_candle2 and                            
+  is_red_candle2 and                                
+  low < last_pivot_low2[1] and                      
+  close > last_pivot_low2[1] and                    
+  (is_bullish_absorption2 or not use_eam_confirmation2) 
+
+short_signal_condition2 =
+  is_anomaly_candle2 and                            
+  is_green_candle2 and                              
+  high > last_pivot_high2[1] and                    
+  close < last_pivot_high2[1] and                   
+  (is_bearish_absorption2 or not use_eam_confirmation2) 
+
+
+// =============================================================================
+//                                  VISUALIZATION
+// =============================================================================
+
+bgcolor(show_anomaly_bg2 and is_anomaly_candle2 ? color.new(color.gray, 85) : na)
+
+y12 = low - (ta.atr(30))
+y22 = high + (ta.atr(30))
+
+if long_signal_condition2
+    label.new(bar_index , y12, '▲', color=#018208, style=label.style_label_up, textcolor=color.white, size=size.normal)
+alertcondition(long_signal_condition2, 'Long', 'Long Signal Message, Edit here')
+
+if short_signal_condition2
+    label.new(bar_index , y22, '▼', color=#d12208, style=label.style_label_down, textcolor=color.white, size=size.normal)
+alertcondition(short_signal_condition2, 'Short', 'Short Signal Message, Edit here')
+
+
+
+// ======================================================================================
+// SESSIONS
+// ======================================================================================
+
+// Inputs
+periods = input.int(3, minval=1, title="Moving Average Period")
+pt  = input.bool(false, title="Plot Triangles on Bars?")
+pc  = input.bool(true,  title="Plot Swing Lines?")
+pttb = input.bool(true, title="Plot Screen Edge Triangles?")
+shb = input.bool(false, title="Highlight Bars on Cross?")
+sbh = input.bool(true,  title="Background Highlight on Cross?")
+
+// Smoothing
+smaHigh = ta.sma(high, periods)
+smaLow  = ta.sma(low, periods)
+
+// Trend direction (no lag version)
+var int trend = 0
+trend := close > smaHigh ? 1 : close < smaLow ? -1 : trend
+
+// Swing levels (persistent)
+var float hi = na
+var float lo = na
+
+if trend == -1
+    hi := smaHigh
+    lo := na
+else if trend == 1
+    lo := smaLow
+    hi := na
+
+// Cross conditions (correct way)
+crossUp   = ta.crossover(close, hi)
+crossDown = ta.crossunder(close, lo)
+
+// Bar highlight
+barcolor(shb and (crossUp or crossDown) ? color.yellow : na)
+
+// Background highlight
+bgcolor(sbh and crossUp   ? color.new(color.green, 60) : na)
+bgcolor(sbh and crossDown ? color.new(color.red, 60)   : na)
+
+// Plot lines
+plot(pc ? hi : na, title="Swing High", color=color.fuchsia, style=plot.style_linebr, linewidth=3)
+plot(pc ? lo : na, title="Swing Low",  color=color.lime,    style=plot.style_linebr, linewidth=3)
+
+// Triangles on bars
+plotshape(pt and not na(hi), style=shape.triangledown, location=location.abovebar, color=color.fuchsia)
+plotshape(pt and not na(lo), style=shape.triangleup,   location=location.belowbar, color=color.lime)
+
+// Screen edge triangles
+plotshape(pttb and not na(hi), style=shape.triangledown, location=location.top,    color=color.red)
+plotshape(pttb and not na(lo), style=shape.triangleup,   location=location.bottom, color=color.lime)
