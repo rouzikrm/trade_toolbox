@@ -25,13 +25,13 @@ supplyValign = input.string("Bottom", title="Vertical Alignment (Supply)", optio
 demandValign = input.string("Top", title="Vertical Alignment (Demand)", options=["Top", "Center", "Bottom"], group = 'Text Settings')
 
 displayFormingZones = input.bool(false, title="Show Forming Zones", group = 'Timeframe Options', tooltip = 'Shows zones that could potentially form (unclosed candles)')
-display5m = input.bool(true, title="Show 5m Zones", group = 'Timeframe Options')
-display15m = input.bool(true, title="Show 15m Zones", group = 'Timeframe Options')
-display30m = input.bool(true, title="Show 30m Zones", group = 'Timeframe Options')
-display45m = input.bool(true, title="Show 45m Zones", group = 'Timeframe Options')
+display5m = input.bool(false, title="Show 5m Zones", group = 'Timeframe Options')
+display15m = input.bool(false, title="Show 15m Zones", group = 'Timeframe Options')
+display30m = input.bool(false, title="Show 30m Zones", group = 'Timeframe Options')
+display45m = input.bool(false, title="Show 45m Zones", group = 'Timeframe Options')
 display1h = input.bool(true, title="Show 1h Zones", group = 'Timeframe Options')
-display2h = input.bool(true, title="Show 2h Zones", group = 'Timeframe Options')
-display3h = input.bool(true, title="Show 3h Zones", group = 'Timeframe Options')
+display2h = input.bool(false, title="Show 2h Zones", group = 'Timeframe Options')
+display3h = input.bool(false, title="Show 3h Zones", group = 'Timeframe Options')
 display4h = input.bool(true, title="Show 4h Zones", group = 'Timeframe Options')
 displayD = input.bool(false, title="Show Daily Zones", group = 'Timeframe Options')
 displayW = input.bool(false, title="Show Weekly Zones", group = 'Timeframe Options')
@@ -51,6 +51,8 @@ momentCTD = math.round(time(timeframe.period) + (zoneOffset * 60000 * str.tonumb
 
 
 
+var line bearEntry = na
+var line bullEntry = na
 
 if textSize == 'Auto'
     textSize := size.auto
@@ -455,32 +457,6 @@ if ta.crossunder(btm, threshold) and low[1] > math.max(low, low[2])
       , target
       , style = line.style_dashed
       , color = bull_css)
-    
-//-----------------------------------------------------------------------------}
-//Display breakout signals
-//-----------------------------------------------------------------------------{
-buy = ta.crossover(close, lvl) and os == 1 and cross == 1
-sell = ta.crossunder(close, lvl) and os == 0 and cross == 1
-cross := lvl != lvl[1] ? 1 : buy or sell ? 0 : cross[1]
-
-//Plots
-plotshape(buy ? low : na, "Buy Label"
-  , style     = shape.labelup
-  , location  = location.absolute
-  , color     = #0cb51a
-  , text      = "B"
-  , textcolor = color.white
-  , size      = size.tiny)
-
-plotshape(sell ? high : na, "Sell Label"
-  , style     = shape.labeldown
-  , location  = location.absolute
-  , color     = #ff1100
-  , text      = "S"
-  , textcolor = color.white
-  , size      = size.tiny)
-
-//-----------------------------------------------------------------------------}
 
 
 // ===================================================================
@@ -495,8 +471,8 @@ vibration = 10
 leveling = 10.0
 cyclicmemory = domcycle * 2
 
-h1 = hline(30, color=color.silver, linestyle=hline.style_dashed)
-h2 = hline(70, color=color.silver, linestyle=hline.style_dashed)
+//h1 = hline(30, color=color.silver, linestyle=hline.style_dashed)
+//h2 = hline(70, color=color.silver, linestyle=hline.style_dashed)
 
 torque = 2.0 / (vibration + 1)
 phasingLag = (vibration - 1) / 2.0
@@ -680,117 +656,27 @@ if sell_signal
 alertcondition(buy_signal, "Cyclic Reversal BUY", "Cyclic Reversal Engine: BUY Signal | Adaptive Cycle Target Met")
 alertcondition(sell_signal, "Cyclic Reversal SELL", "Cyclic Reversal Engine: SELL Signal | Adaptive Cycle Target Met")
 
-// =============================================================================
-//                                  Settings (INPUTS)
-// =============================================================================
-// --- Anomali Tespit Modülü (ATM) Ayarları ---
-atm_tab2 = "Anomaly Detection Module (ATM)"
-atm_lookback2 = input.int(21, "Lookback Period", group=atm_tab2, tooltip="Hacim ve volatilite ortalamaları için kullanılacak mum sayısı.")
-volatility_multiplier2 = input.float(1.9, "Volatility Multiplier", group=atm_tab2, tooltip="Normal bir mum boyunun kaç katı 'anormal' sayılacak.")
-volume_multiplier2 = input.float(1.618, "Volume Multiplier", group=atm_tab2, tooltip="Normal hacmin kaç katı 'anormal' sayılacak.")
-
-// --- Likidite Bölgesi Modülü (LBM) Ayarları ---
-lbm_tab2 = "Liquidity Zone Module (LBM)"
-lbm_pivot_lookback2 = input.int(55, "Pivot Lookback", group=lbm_tab2, tooltip="Bir swing noktasını teyit etmek için gereken sağ ve sol mum sayısı.")
-show_liquidity_lines2 = input.bool(true, "Show Liquidity Lines", group=lbm_tab2, tooltip="Tespit edilen swing noktalarından çizilen likidite hatlarını göster/gizle.")
-line_width2 = input.int(1, "Line Width", group=lbm_tab2)
-high_line_color2 = input.color(color.new(#d12208, 40), "High Lines Color", group=lbm_tab2)
-low_line_color2 = input.color(color.new(#018208, 40), "Low Lines Color", group=lbm_tab2)
-
-// --- Sinyal ve Görsel Ayarlar ---
-signal_tab2 = "Signal & Visual Settings"
-use_eam_confirmation2 = input.bool(false, "Use Absorption Confirmation for Signals", group=signal_tab2, tooltip="Sinyallerin doğruluğunu artırmak için 'Emilim Analizi' teyidi zorunlu olsun mu?")
-show_anomaly_bg2 = input.bool(true, "Highlight Anomaly Candles", group=signal_tab2, tooltip="ATM tarafından tespit edilen anormal mumların arka planını renklendir.")
-
-
-// =============================================================================
-//                                  Calculation
-// =============================================================================
-
-// -----------------------------------------------------------------------------
-// | MODULE 1: Anomaly Detection Module (ADM)                                   |
-// -----------------------------------------------------------------------------
-atr2 = ta.atr(atm_lookback2)
-avg_volume2 = ta.sma(volume, atm_lookback2)
-
-is_volatility_spike2 = (high - low) > atr2 * volatility_multiplier2
-is_volume_spike2 = volume > avg_volume2 * volume_multiplier2
-
-is_anomaly_candle2 = is_volatility_spike2 and is_volume_spike2
-
-// -----------------------------------------------------------------------------
-// | MODULE 2: Liquidity Zone Module (LZM)                                      |
-// -----------------------------------------------------------------------------
-pivot_high_price2 = ta.pivothigh(high, lbm_pivot_lookback2, lbm_pivot_lookback2)
-pivot_low_price2 = ta.pivotlow(low, lbm_pivot_lookback2, lbm_pivot_lookback2)
-
-var float last_pivot_high2 = na
-var float last_pivot_low2 = na
-
-if not na(pivot_high_price2)
-    last_pivot_high2 := pivot_high_price2
-if not na(pivot_low_price2)
-    last_pivot_low2 := pivot_low_price2
-
-if show_liquidity_lines2
-    if not na(pivot_high_price2)
-        line.new(bar_index - lbm_pivot_lookback2, pivot_high_price2, bar_index, pivot_high_price2, color=high_line_color2, width=line_width2, style=line.style_dashed)
-    if not na(pivot_low_price2)
-        line.new(bar_index - lbm_pivot_lookback2, pivot_low_price2, bar_index, pivot_low_price2, color=low_line_color2, width=line_width2, style=line.style_dashed)
-        
-// -----------------------------------------------------------------------------
-// | MODULE 3: Absorption Analysis Module (AAM)                                 |
-// -----------------------------------------------------------------------------
-close_position_in_range2 = (close - low) / (high - low)
-
-is_red_candle2 = close < open
-is_green_candle2 = close > open
-
-is_bullish_absorption2 = is_red_candle2 and is_volume_spike2 and close_position_in_range2 > 0.5
-is_bearish_absorption2 = is_green_candle2 and is_volume_spike2 and close_position_in_range2 < 0.5
-
-
-// =============================================================================
-//                                 Signal Logic
-// =============================================================================
-
-long_signal_condition2 = 
-  is_anomaly_candle2 and                            
-  is_red_candle2 and                                
-  low < last_pivot_low2[1] and                      
-  close > last_pivot_low2[1] and                    
-  (is_bullish_absorption2 or not use_eam_confirmation2) 
-
-short_signal_condition2 =
-  is_anomaly_candle2 and                            
-  is_green_candle2 and                              
-  high > last_pivot_high2[1] and                    
-  close < last_pivot_high2[1] and                   
-  (is_bearish_absorption2 or not use_eam_confirmation2) 
-
-
-// =============================================================================
-//                                  VISUALIZATION
-// =============================================================================
-
-bgcolor(show_anomaly_bg2 and is_anomaly_candle2 ? color.new(color.gray, 85) : na)
-
-y12 = low - (ta.atr(30))
-y22 = high + (ta.atr(30))
-
-if long_signal_condition2
-    label.new(bar_index , y12, '▲', color=#018208, style=label.style_label_up, textcolor=color.white, size=size.normal)
-alertcondition(long_signal_condition2, 'Long', 'Long Signal Message, Edit here')
-
-if short_signal_condition2
-    label.new(bar_index , y22, '▼', color=#d12208, style=label.style_label_down, textcolor=color.white, size=size.normal)
-alertcondition(short_signal_condition2, 'Short', 'Short Signal Message, Edit here')
-
-
-
 // ======================================================================================
 // SESSIONS
 // ======================================================================================
+
+// Candle components
+bodySize = math.abs(close - open)
+lowerWick = math.min(open, close) - low
+upperWick = high - math.max(open, close) 
+
+// Condition: bearish + body < lower wick
+rangingBear = (close < open) and (bodySize < lowerWick)
+rangingBull = (close > open) and (bodySize < upperWick)
+// Plot marker
+plotshape(rangingBear,      title="Ranging Bearish Bar",      location=location.abovebar, 
+     color=color.yellow, 
+     style=shape.triangledown, 
+     size=size.tiny)
+plotshape(rangingBull,      title="Ranging Bearish Bar",      location=location.belowbar, 
+     color=color.yellow, 
+     style=shape.triangleup, 
+     size=size.tiny)
 
 // Inputs
 periods = input.int(3, minval=1, title="Moving Average Period")
@@ -838,6 +724,157 @@ plot(pc ? lo : na, title="Swing Low",  color=color.lime,    style=plot.style_lin
 plotshape(pt and not na(hi), style=shape.triangledown, location=location.abovebar, color=color.fuchsia)
 plotshape(pt and not na(lo), style=shape.triangleup,   location=location.belowbar, color=color.lime)
 
-// Screen edge triangles
-plotshape(pttb and not na(hi), style=shape.triangledown, location=location.top,    color=color.red)
-plotshape(pttb and not na(lo), style=shape.triangleup,   location=location.bottom, color=color.lime)
+isFU = bullishFU or bullishATTFU or bearishFU or bearishATTFU
+patternFound = doji[1] and isFU
+bgcolor(patternFound ? color.new(color.teal, 85) : na)
+
+alertcondition(patternFound, 
+     title="Doji + FU Pattern Detected", 
+     message="Doji followed by FU detected on {{ticker}} at {{time}}")
+if patternFound
+    tr = high - low
+    
+    bullEntry := line.new(n
+      , low - tr
+      , n + 1
+      , low - tr
+      , style = line.style_dashed
+      , color = bull_css)
+
+    bearEntry := line.new(n
+      , high + tr
+      , n + 1
+      , high + tr
+      , style = line.style_dashed
+      , color = bear_css)
+
+// === Signal Counters ===
+var int totalCount   = 0
+if barstate.isconfirmed
+    if patternFound
+        totalCount +=1
+
+
+
+// === Pattern Function ===
+f_pattern() =>
+    body = math.abs(close - open)
+    crange = high - low
+    doji = body <= crange * precision
+
+    prevBullish = close[1] > open[1]
+
+    bullishFU    = low < low[1] and close > high[1]
+    bullishATTFU = low < low[1] and close > (prevBullish ? close[1] : open[1])
+    bearishFU    = high > high[1] and close < low[1]
+    bearishATTFU = high > high[1] and close < (prevBullish ? open[1] : close[1])
+
+    bullishFU_all = bullishFU or bullishATTFU
+    bearishFU_all = bearishFU or bearishATTFU
+
+    // Your current logic:
+    // bearishSetup = doji[2] and bullishFU_all[1] and close > open
+    // bullishSetup = doji[2] and bearishFU_all[1] and close < open
+    bearishSetup = doji[2] and bullishFU_all[1] and close > open
+    bullishSetup = doji[2] and bearishFU_all[1] and close < open
+
+    bullishSetup or bearishSetup
+
+// === MTF Checks ===
+tf3  = request.security(syminfo.tickerid, "3",  f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf5  = request.security(syminfo.tickerid, "5",  f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf10 = request.security(syminfo.tickerid, "10", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf15 = request.security(syminfo.tickerid, "15", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf20 = request.security(syminfo.tickerid, "20", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf30 = request.security(syminfo.tickerid, "30", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf45 = request.security(syminfo.tickerid, "45", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+tf60 = request.security(syminfo.tickerid, "60", f_pattern(), barmerge.gaps_off, barmerge.lookahead_off)
+
+// === Table ===
+var table scannerTable = table.new(position.bottom_right, 2, 11, border_width=1)
+
+f_cell(_row, _tf, _val) =>
+    table.cell(scannerTable, 0, _row, _tf, text_color=color.white, bgcolor=color.gray)
+    table.cell(scannerTable, 1, _row, _val ? "Pattern Present" : "No Pattern", 
+         text_color=color.white, 
+         bgcolor=_val ? color.green : color.red)
+
+if barstate.islast
+    table.cell(scannerTable, 0, 0, "Timeframe", text_color=color.white, bgcolor=color.blue)
+    table.cell(scannerTable, 1, 0, "Status", text_color=color.white, bgcolor=color.blue)
+
+    f_cell(1, "3m",  tf3)
+    f_cell(2, "5m",  tf5)
+    f_cell(3, "10m", tf10)
+    f_cell(4, "15m", tf15)
+    f_cell(5, "20m", tf20)
+    f_cell(6, "30m", tf30)
+    f_cell(7, "45m", tf45)
+    f_cell(8, "60m", tf60)
+    table.cell(scannerTable, 0, 9, "Total Signals", text_color=color.white, bgcolor=color.blue)
+    table.cell(scannerTable, 1, 9, str.tostring(totalCount), text_color=color.white, bgcolor=color.blue)
+
+
+
+fldPeriod = input.int(title="Period", defval=100, minval=3)
+fldsrc    = input.source(title="Source", defval=hl2)
+
+// Vertical mirror: invert values
+fldbaseline = ta.sma(fldsrc, fldPeriod)
+FLD = fldbaseline - ((fldsrc - fldbaseline)*1.5)
+
+plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.aqua, offset=fldPeriod)
+plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.green, offset=fldPeriod/2)
+plot(src, title="FLD ()", linewidth=1, color=color.rgb(175, 76, 137), offset=fldPeriod/2)
+plot(src, title="FLD ()", linewidth=1, color=color.rgb(238, 255, 0), offset=fldPeriod)
+
+// === INPUTS ===
+scalp_len = input.int(30, "Length", group="Core Settings")
+scalp_scale = input.float(200.0, "Scale (%)", minval=100, group="Core Settings")
+scalp_signalLen = input.int(20, "Signal Length", group="Core Settings")
+scalp_overbought = input.float(58, "Overbought", group="Levels")
+scalp_oversold = input.float(-58, "Oversold", group="Levels")
+
+// === CALCULATIONS ===
+scalp_mid = ta.sma((high + low) / 2, scalp_len)
+scalp_rng = ta.sma(high - low, scalp_len)
+scalp_body = ta.sma(math.abs(close - open), scalp_len)
+scalp_offset = scalp_rng * scalp_scale / 100 * (1 + scalp_body / math.max(scalp_rng, 1e-10))
+scalp_up = scalp_mid + scalp_offset
+scalp_dn = scalp_mid - scalp_offset
+scalp_band = math.max(scalp_up - scalp_dn, 1e-10)
+scalp_osc = 100 * (close - scalp_dn) / scalp_band - 50
+scalp_sig = ta.sma(scalp_osc, scalp_signalLen)
+
+// === SIGNALS ===
+scalp_buySignal = ta.crossover(scalp_osc, scalp_oversold - cyclelen)
+scalp_sellSignal = ta.crossunder(scalp_osc, scalp_overbought + cyclelen)
+
+// === COLORS ===
+scalp_bullColor = color.new(color.lime, 0)
+scalp_bearColor = color.new(color.red, 0)
+scalp_neutralColor = color.new(color.gray, 85)
+
+// === BACKGROUND DIRECTION ===
+bgcolor(scalp_osc > scalp_sig ? color.new(scalp_bullColor, 90) : scalp_osc < scalp_sig ? color.new(scalp_bearColor, 90) : na)
+
+// === SIGNAL SHAPES ===
+plotshape(scalp_buySignal, title="Buy", location=location.belowbar, color=color.new(color.lime,0),
+     style=shape.triangleup, size=size.tiny, text="BUY", textcolor=color.white)
+
+plotshape(scalp_sellSignal, title="Sell", location=location.abovebar, color=color.new(color.red,0),
+     style=shape.triangledown, size=size.tiny, text="SELL", textcolor=color.white)
+
+// === TREND LINE ===
+//plot(scalp_osc, title="VCO", color=color.new(scalp_osc > scalp_sig ? color.lime : color.red, 0), linewidth=2)
+
+//plot(scalp_sig, title="Signal", color=color.new(color.yellow, 0), linewidth=1)
+
+//hline(0, "Zero", color=color.new(color.gray, 60))
+//hline(scalp_overbought, "Overbought", color=color.new(color.red, 60), linestyle=hline.style_dotted)
+//hline(scalp_oversold, "Oversold", color=color.new(color.green, 60), linestyle=hline.style_dotted)
+
+// === ALERTS ===
+//alertcondition(scalp_buySignal, title="Buy Signal", message="BUY: Oscillator crossed above oversold (-58)")
+
+//alertcondition(scalp_sellSignal, title="Sell Signal", message="SELL: Oscillator crossed below overbought (58)")
