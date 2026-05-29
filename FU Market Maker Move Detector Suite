@@ -240,10 +240,11 @@ showDJBearATT   = input.bool(true, "Highlight Bearish ATT FU Doji")
 
 // Previous bar bullish flag
 prevBullish = close[1] > open[1]
+prevBearish = close[1] < open[1]
 
 // FU Candle Conditions
 bullishFU    = low < low[1] and close > high[1]
-bullishATTFU = low < low[1] and close > (prevBullish ? close[1] : open[1])
+bullishATTFU = low < low[1] and close > (prevBearish ? close[1] : open[1])
 bearishFU    = high > high[1] and close < low[1]
 bearishATTFU = high > high[1] and close < (prevBullish ? open[1] : close[1])
 
@@ -308,9 +309,9 @@ alertcondition(C_Doji and not C_DragonflyDoji and not C_GravestoneDojiOne, title
 //    var ttDoji = "Doji\nWhen the open and close of a security are essentially equal to each other, a doji candle forms. The length of both upper and lower shadows may vary, causing the candlestick you are left with to either resemble a cross, an inverted cross, or a plus sign. Doji candles show the playout of buyer-seller indecision in a tug-of-war of sorts. As price moves either above or below the opening level during the session, the close is either at or near the opening level."
 //    label.new(bar_index, patternLabelPosLow, text="D", style=label.style_label_up, color = label_color_neutral, textcolor=color.white, tooltip = ttDoji)
 //plotshape(C_Doji and not C_DragonflyDoji and not C_GravestoneDojiOne, patternLabelPosLowstyle=shape.triangleup, location=location.belowbar, color=label_color_neutral, offset=-1, size=size.tiny)
-bgcolor(C_Doji and not C_DragonflyDoji and not C_GravestoneDojiOne?label_color_neutral:na)
+//bgcolor(C_Doji and not C_DragonflyDoji and not C_GravestoneDojiOne?label_color_neutral:na)
 
-bgcolor(ta.highest(C_Doji?1:0, C_DojiNumberOfCandles)!=0 ? color.new(color.gray, 90) : na, offset=-(C_DojiNumberOfCandles-1))
+//bgcolor(ta.highest(C_Doji?1:0, C_DojiNumberOfCandles)!=0 ? color.new(color.gray, 90) : na, offset=-(C_DojiNumberOfCandles-1))
 
 // User input for maximum body size relative to full candle size
 precision = input.float(0.25, minval=0.0001, title="Doji's Max Body Size")
@@ -322,7 +323,7 @@ doji = math.abs(open - close) <= (high - low) * precision
 // barcolor(doji ? color.yellow : na)
 //if doji
 //    label.new(bar_index, patternLabelPosLow, text="D", style=label.style_label_up, color = label_color_neutral, textcolor=color.white)
-bgcolor(doji?label_color_neutral:na)
+//bgcolor(doji?label_color_neutral:na)
 // === FU CANDLE CONDITIONS + DOJI FILTER ===
 // Bullish FU: current low < previous low, current close > previous high
 bullishDJFU    = doji and low < low[1] and close > high[1]
@@ -351,8 +352,8 @@ highBar =  close < low[1]  and open[1]<close[1]
 lowBar = close > high[1] and open[1]>close[1]
 
 // Highlight background for confirmation
-bgcolor(highBar ? color.new(color.red, 85) : na)
-bgcolor(lowBar ? color.new(color.green, 85) : na)
+//bgcolor(highBar ? color.new(color.red, 85) : na)
+//bgcolor(lowBar ? color.new(color.green, 85) : na)
 
 //horns pattern
 
@@ -713,8 +714,8 @@ crossDown = ta.crossunder(close, lo)
 barcolor(shb and (crossUp or crossDown) ? color.yellow : na)
 
 // Background highlight
-bgcolor(sbh and crossUp   ? color.new(color.green, 60) : na)
-bgcolor(sbh and crossDown ? color.new(color.red, 60)   : na)
+//bgcolor(sbh and crossUp   ? color.new(color.green, 60) : na)
+//bgcolor(sbh and crossDown ? color.new(color.red, 60)   : na)
 
 // Plot lines
 plot(pc ? hi : na, title="Swing High", color=color.fuchsia, style=plot.style_linebr, linewidth=3)
@@ -856,7 +857,7 @@ scalp_bearColor = color.new(color.red, 0)
 scalp_neutralColor = color.new(color.gray, 85)
 
 // === BACKGROUND DIRECTION ===
-bgcolor(scalp_osc > scalp_sig ? color.new(scalp_bullColor, 90) : scalp_osc < scalp_sig ? color.new(scalp_bearColor, 90) : na)
+//bgcolor(scalp_osc > scalp_sig ? color.new(scalp_bullColor, 90) : scalp_osc < scalp_sig ? color.new(scalp_bearColor, 90) : na)
 
 // === SIGNAL SHAPES ===
 plotshape(scalp_buySignal, title="Buy", location=location.belowbar, color=color.new(color.lime,0),
