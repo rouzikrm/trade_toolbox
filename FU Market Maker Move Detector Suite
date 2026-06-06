@@ -332,7 +332,7 @@ bullishDJATTFU = doji and low < low[1] and close > (prevBullish ? close[1] : ope
 // Bearish FU: current high > previous high, current close < previous low
 bearishDJFU    = doji and high > high[1] and close < low[1]
 // Bearish ATT FU: same high rule, but compare close to prev open/close based on prev bullishness
-bearishDJATTFU = doji and high > high[1] and close < (prevBullish ? open[1] : close[1])
+bearishDJATTFU = doji and high > high[1] and close < (prevBearish ? open[1] : close[1])
 
 alertcondition(bullishDJFU,    title="Bullish Doji FU Candle",      message="Bullish FU Candle detected at {{time}}")
 alertcondition(bullishDJATTFU, title="Bullish Doji ATT FU Candle", message="Bullish ATT FU Candle detected at {{time}}")
@@ -345,6 +345,12 @@ barcolor(    showBullFU    and bullishFU    ? color.new(color.green, 0) :    sho
 barcolor(    showDJBullFU    and bullishFU    ?  color.new(#7fbfcf, 0) :    showDJBullATT   and bullishDJATTFU ?   color.new(#05a6ce, 0) :    showDJBearFU    and bearishDJFU    ?  color.new(#a649f1, 0)  :    showDJBearATT   and bearishDJATTFU ?color.new(#4b0089, 0)   :    na)
 
 
+
+plotshape(showBullATT and bullishATTFU, style=shape.cross, location=location.belowbar, color=color.teal, offset=0, size=size.tiny)
+plotshape(showBearATT and bearishATTFU, style=shape.cross, location=location.abovebar, color=color.maroon, offset=0, size=size.tiny)
+
+plotshape(showBullFU and bullishFU, style=shape.cross, location=location.belowbar, color=color.green, offset=0, size=size.tiny)
+plotshape(showBearFU and bearishFU, style=shape.cross, location=location.abovebar, color=color.red, offset=0, size=size.tiny)
 // Conditions for a high bar (potential sell signal)
 highBar =  close < low[1]  and open[1]<close[1]
 
