@@ -14,7 +14,8 @@ indiversion = input.string('DRO', '==== Select Indicator ====', options=['DRO', 
 
 
 detrendS = input.string('On', '  Detrend', options=['On', 'Off'], group='DPO', inline='de')
-
+pivotLeft = input.int(5, "Pivot Left")
+pivotRight = input.int(5, "Pivot Right")
 fastLength = input.int(3, '  Fast  - ', group='DPO', inline='l')
 slowLength = input.int(50, ' Slow:', group='DPO', inline='l')
 
@@ -470,3 +471,87 @@ plotshape(s_sig_dn, "Chart Strong Rsi Dn", shape.diamond, location.abovebar, siz
 plotshape(sig_up and sar_rsi >= lower_, "Chart Rsi Up", shape.diamond, location.belowbar, size = size.tiny, color = sar_col, force_overlay = true)
 plotshape(sig_dn and sar_rsi <= upper_, "Chart Rsi Dn", shape.diamond, location.abovebar, size = size.tiny, color = sar_col, force_overlay = true)// --------------------------------------------------------------------------------------------------------------------}
 
+//====================================================
+// CRSI vs PRICE DIVERGENCE
+//====================================================
+
+divLeft  = input.int(5, "Divergence Pivot Left", group="Divergence")
+divRight = input.int(1, "Divergence Pivot Right", group="Divergence")
+
+// Price pivots
+pLow  = ta.pivotlow(low, divLeft, divRight)
+pHigh = ta.pivothigh(high, divLeft, divRight)
+
+// CRSI pivots
+cLow  = ta.pivotlow(crsi, divLeft, divRight)
+cHigh = ta.pivothigh(crsi, divLeft, divRight)
+
+// Previous pivots
+var float prevPriceLow  = na
+var float prevCrsiLow   = na
+
+var float prevPriceHigh = na
+var float prevCrsiHigh  = na
+
+bullDiv = false
+bearDiv = false
+
+// Bullish divergence
+if not na(pLow) and not na(cLow)
+    bullDiv := not na(prevPriceLow) and not na(prevCrsiLow) and
+               pLow < prevPriceLow and
+               cLow > prevCrsiLow
+
+    prevPriceLow := pLow
+    prevCrsiLow  := cLow
+
+// Bearish divergence
+if not na(pHigh) and not na(cHigh)
+    bearDiv := not na(prevPriceHigh) and not na(prevCrsiHigh) and
+               pHigh > prevPriceHigh and
+               cHigh < prevCrsiHigh
+
+    prevPriceHigh := pHigh
+    prevCrsiHigh  := cHigh
+
+// ----- CRSI panel markers -----
+plotshape(
+     bullDiv ? crsi[divRight] : na,
+     title="Bullish CRSI Divergence",
+     style=shape.triangleup,
+     location=location.absolute,
+     color=color.lime,
+     size=size.small)
+
+plotshape(
+     bearDiv ? crsi[divRight] : na,
+     title="Bearish CRSI Divergence",
+     style=shape.triangledown,
+     location=location.absolute,
+     color=color.red,
+     size=size.small)
+
+// ----- Chart markers -----
+plotshape(
+     bullDiv,
+     title="Bull Div Chart",
+     style=shape.labelup,
+     location=location.belowbar,
+     text="Bull Div",
+     color=color.lime,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+plotshape(
+     bearDiv,
+     title="Bear Div Chart",
+     style=shape.labeldown,
+     location=location.abovebar,
+     text="Bear Div",
+     color=color.red,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
