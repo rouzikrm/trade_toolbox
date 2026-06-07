@@ -470,66 +470,144 @@ plotshape(s_sig_dn, "Chart Strong Rsi Dn", shape.diamond, location.abovebar, siz
 
 plotshape(sig_up and sar_rsi >= lower_, "Chart Rsi Up", shape.diamond, location.belowbar, size = size.tiny, color = sar_col, force_overlay = true)
 plotshape(sig_dn and sar_rsi <= upper_, "Chart Rsi Dn", shape.diamond, location.abovebar, size = size.tiny, color = sar_col, force_overlay = true)// --------------------------------------------------------------------------------------------------------------------}
-
 //====================================================
-// CRSI vs PRICE DIVERGENCE
+// CRSI vs PRICE DIVERGENCE (NON-REPAINTING)
 //====================================================
 
-divLeft  = input.int(5, "Divergence Pivot Left", group="Divergence")
-divRight = input.int(1, "Divergence Pivot Right", group="Divergence")
+divLeft  = input.int(5, "Divergence Pivot Left", minval=1, group="Divergence")
+divRight = input.int(1, "Divergence Pivot Right", minval=1, group="Divergence")
 
-// Price pivots
-pLow  = ta.pivotlow(low, divLeft, divRight)
+//----------------------------------------------------
+// Confirmed pivots
+//----------------------------------------------------
+pLow  = ta.pivotlow(low,  divLeft, divRight)
 pHigh = ta.pivothigh(high, divLeft, divRight)
 
-// CRSI pivots
 cLow  = ta.pivotlow(crsi, divLeft, divRight)
 cHigh = ta.pivothigh(crsi, divLeft, divRight)
 
-// Previous pivots
-var float prevPriceLow  = na
-var float prevCrsiLow   = na
+//----------------------------------------------------
+// LOWS
+//----------------------------------------------------
+var float prevPriceLow = na
+var float lastPriceLow = na
 
+var int prevPriceLowBar = na
+var int lastPriceLowBar = na
+
+var float prevCrsiLow = na
+var float lastCrsiLow = na
+
+var int prevCrsiLowBar = na
+var int lastCrsiLowBar = na
+
+//----------------------------------------------------
+// HIGHS
+//----------------------------------------------------
 var float prevPriceHigh = na
-var float prevCrsiHigh  = na
+var float lastPriceHigh = na
 
+var int prevPriceHighBar = na
+var int lastPriceHighBar = na
+
+var float prevCrsiHigh = na
+var float lastCrsiHigh = na
+
+var int prevCrsiHighBar = na
+var int lastCrsiHighBar = na
+
+//----------------------------------------------------
+// Update CRSI pivots first
+//----------------------------------------------------
+if not na(cLow)
+    prevCrsiLow    := lastCrsiLow
+    prevCrsiLowBar := lastCrsiLowBar
+
+    lastCrsiLow    := cLow
+    lastCrsiLowBar := bar_index - divRight
+
+if not na(cHigh)
+    prevCrsiHigh    := lastCrsiHigh
+    prevCrsiHighBar := lastCrsiHighBar
+
+    lastCrsiHigh    := cHigh
+    lastCrsiHighBar := bar_index - divRight
+
+//----------------------------------------------------
+// Divergence signals
+//----------------------------------------------------
 bullDiv = false
 bearDiv = false
 
-// Bullish divergence
-if not na(pLow) and not na(cLow)
-    bullDiv := not na(prevPriceLow) and not na(prevCrsiLow) and
-               pLow < prevPriceLow and
-               cLow > prevCrsiLow
+//----------------------------------------------------
+// New confirmed PRICE LOW
+//----------------------------------------------------
+if not na(pLow)
 
-    prevPriceLow := pLow
-    prevCrsiLow  := cLow
+    prevPriceLow    := lastPriceLow
+    prevPriceLowBar := lastPriceLowBar
 
-// Bearish divergence
-if not na(pHigh) and not na(cHigh)
-    bearDiv := not na(prevPriceHigh) and not na(prevCrsiHigh) and
-               pHigh > prevPriceHigh and
-               cHigh < prevCrsiHigh
+    lastPriceLow    := pLow
+    lastPriceLowBar := bar_index - divRight
 
-    prevPriceHigh := pHigh
-    prevCrsiHigh  := cHigh
+    bullDiv :=
+         not na(prevPriceLow) and
+         not na(lastPriceLow) and
+         not na(prevCrsiLow) and
+         not na(lastCrsiLow) and
+         lastPriceLow < prevPriceLow and
+         lastCrsiLow  > prevCrsiLow
 
-// ----- CRSI panel markers -----
-plotshape(
-     bullDiv ? crsi[divRight] : na,
-     title="Bullish CRSI Divergence",
-     style=shape.triangleup,
-     location=location.absolute,
-     color=color.lime,
-     size=size.small)
+//----------------------------------------------------
+// New confirmed PRICE HIGH
+//----------------------------------------------------
+if not na(pHigh)
 
-plotshape(
-     bearDiv ? crsi[divRight] : na,
-     title="Bearish CRSI Divergence",
-     style=shape.triangledown,
-     location=location.absolute,
-     color=color.red,
-     size=size.small)
+    prevPriceHigh    := lastPriceHigh
+    prevPriceHighBar := lastPriceHighBar
+
+    lastPriceHigh    := pHigh
+    lastPriceHighBar := bar_index - divRight
+
+    bearDiv :=
+         not na(prevPriceHigh) and
+         not na(lastPriceHigh) and
+         not na(prevCrsiHigh) and
+         not na(lastCrsiHigh) and
+         lastPriceHigh > prevPriceHigh and
+         lastCrsiHigh  < prevCrsiHigh
+
+//----------------------------------------------------
+// DIVERGENCE STATE
+//----------------------------------------------------
+
+
+
+var int divState = 0
+//  1 = bullish divergence active
+// -1 = bearish divergence active
+//  0 = none
+
+crsiDiffub = ub - crsi
+crsiDifflb = crsi - db
+
+// Enter state on divergence
+if bullDiv
+    divState := 1
+
+if bearDiv
+    divState := -1
+
+// Clear state only when CRSI moves > 5 away
+if divState != 0 and ((  crsiDiffub > 15) or (  crsiDifflb > 15) )
+    divState := 0
+
+bullDivActive = divState == 1
+bearDivActive = divState == -1
+
+//----------------------------------------------------
+// Plot signals on pivot confirmation bar
+//----------------------------------------------------
 
 // ----- Chart markers -----
 plotshape(
@@ -555,3 +633,9 @@ plotshape(
      size=size.tiny,
      offset=-divRight,
      force_overlay=true)
+
+// Optional: visualize active divergence regime
+bgcolor(
+     bullDivActive ? color.new(color.green, 92) :
+     bearDivActive ? color.new(color.red, 92) :
+     na)
