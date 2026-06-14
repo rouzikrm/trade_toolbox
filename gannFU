@@ -111,8 +111,6 @@ var float[] ratios = array.from(
      )
 
 var color[] colors = array.from(
-     color.gray,
-     color.silver,
      color.orange,
      color.yellow,
      color.lime,
@@ -131,7 +129,6 @@ if barstate.isfirst
     for i = 0 to 8
         array.push(fanLines, na)
 
-var line bisector = na
 
 //--------------------------------------------------
 // DRAW FAN
@@ -166,28 +163,6 @@ if barstate.islast and anchorsFound
 
         array.set(fanLines, i, newLine)
 
-    //--------------------------------------------------
-    // ANGLE BISECTOR
-    //--------------------------------------------------
-
-    line.delete(bisector)
-
-    bisector :=
-         line.new(
-             startBar,
-             startPrice,
-             startBar + extendBars,
-             startPrice + halfSlope * extendBars,
-             xloc=xloc.bar_index,
-             extend=extend.right,
-             color=color.white,
-             width=3,
-             style=line.style_dashed)
-
-//--------------------------------------------------
-// VISUAL MARKERS
-//--------------------------------------------------
-
 plotshape(
      bar_index == startBar,
      style=shape.circle,
@@ -203,3 +178,30 @@ plotshape(
      color=color.red,
      size=size.small,
      title="End")
+
+// 1. Define the ratios we are comparing
+float r1 = 1.0, r2 = 0.5, r3 = 0.25, r4 = 0.125
+
+// 2. Helper function to get price of a specific ratio at current bar
+getGannPrice(float ratio) =>
+    startPrice + (baseSlope * ratio * (bar_index - startBar))
+
+// 3. Check for crossovers/within logic
+// We only check bars after the endBar to see the fan projection
+inZone1 = (close >= getGannPrice(r2) and close <= getGannPrice(r1)) or (close <= getGannPrice(r2) and close >= getGannPrice(r1)) and not  (close[1] >= getGannPrice(r2) and close[1] <= getGannPrice(r1)) or (close[1] <= getGannPrice(r2) and close[1] >= getGannPrice(r1))
+inZone2 = (close >= getGannPrice(r3) and close <= getGannPrice(r2)) or (close <= getGannPrice(r3) and close >= getGannPrice(r2)) and not (close[1] >= getGannPrice(r3) and close[1] <= getGannPrice(r2)) or (close[1] <= getGannPrice(r3) and close[1] >= getGannPrice(r2))
+inZone3 = (close >= getGannPrice(r4) and close <= getGannPrice(r3)) or (close <= getGannPrice(r4) and close >= getGannPrice(r3))
+
+// 4. Track if we already found the first bar to avoid plotting every single bar
+var bool found = false
+if barstate.islast
+    found := false // Reset if looking for new signal
+
+// Plot markers
+plotshape(not found and bar_index > endBar and inZone1, "Zone 1/2-1", shape.diamond, location.abovebar, color.white, size=size.tiny)
+plotshape(not found and bar_index > endBar and inZone2, "Zone 1/4-1/2", shape.diamond, location.abovebar, color.yellow, size=size.tiny)
+plotshape(not found and bar_index > endBar and inZone3, "Zone 1/8-1/4", shape.diamond, location.abovebar, color.orange, size=size.tiny)
+
+// If you want to stop checking after the first find, update 'found'
+if (inZone1 or inZone2 or inZone3) and bar_index > endBar
+    found := true
