@@ -1,0 +1,205 @@
+//@version=5
+indicator("Date Anchored Gann Fan + Angle Bisector", overlay=true, max_lines_count=50)
+
+//--------------------------------------------------
+// INPUTS
+//--------------------------------------------------
+
+startTime = input.time(
+     timestamp("01 Jan 2025 00:00 +0000"),
+     "Start Date (X)")
+
+endTime = input.time(
+     timestamp("15 Jan 2025 00:00 +0000"),
+     "End Date (Y)")
+
+startPriceSource = input.string(
+     "Low",
+     "X Price Source",
+     options = ["High", "Low"])
+
+endPriceSource = input.string(
+     "High",
+     "Y Price Source",
+     options = ["High", "Low"])
+
+extendBars = input.int(500, "Fan Length", minval=50)
+
+//--------------------------------------------------
+// FIND ANCHOR BARS
+//--------------------------------------------------
+
+var int startBar = na
+var int endBar = na
+
+if time >= startTime and time[1] < startTime
+    startBar := bar_index
+
+if time >= endTime and time[1] < endTime
+    endBar := bar_index
+
+//--------------------------------------------------
+// STORE ANCHOR PRICES
+//--------------------------------------------------
+
+var float startPrice = na
+var float endPrice = na
+
+if bar_index == startBar
+    startPrice := startPriceSource == "High" ? high : low
+
+if bar_index == endBar
+    endPrice := endPriceSource == "High" ? high : low
+
+//--------------------------------------------------
+// VALIDATION
+//--------------------------------------------------
+
+anchorsFound =
+     not na(startBar) and
+     not na(endBar) and
+     not na(startPrice) and
+     not na(endPrice)
+
+barsDiff =
+     anchorsFound
+     ? endBar - startBar
+     : na
+
+priceDiff =
+     anchorsFound
+     ? endPrice - startPrice
+     : na
+
+baseSlope =
+     anchorsFound and barsDiff != 0
+     ? priceDiff / barsDiff
+     : na
+
+//--------------------------------------------------
+// ANGLE BISECTOR
+//--------------------------------------------------
+
+angleRad =
+     anchorsFound
+     ? math.atan(baseSlope)
+     : na
+
+halfAngle =
+     anchorsFound
+     ? angleRad / 2
+     : na
+
+halfSlope =
+     anchorsFound
+     ? math.tan(halfAngle)
+     : na
+
+//--------------------------------------------------
+// FAN RATIOS
+//--------------------------------------------------
+
+var float[] ratios = array.from(
+     1.0/8.0,
+     1.0/4.0,
+     1.0/2.0,
+     1.0
+     //2.0,
+     //3.0,
+     //4.0,
+     //8.0
+     )
+
+var color[] colors = array.from(
+     color.gray,
+     color.silver,
+     color.orange,
+     color.yellow,
+     color.lime,
+     color.aqua,
+     color.blue,
+     color.purple,
+     color.red)
+
+//--------------------------------------------------
+// LINE STORAGE
+//--------------------------------------------------
+
+var line[] fanLines = array.new_line()
+
+if barstate.isfirst
+    for i = 0 to 8
+        array.push(fanLines, na)
+
+var line bisector = na
+
+//--------------------------------------------------
+// DRAW FAN
+//--------------------------------------------------
+
+if barstate.islast and anchorsFound
+
+    for i = 0 to 3
+
+        ratio = array.get(ratios, i)
+
+        slope = baseSlope * ratio
+
+        x2 = startBar + extendBars
+
+        y2 = startPrice + slope * extendBars
+
+        oldLine = array.get(fanLines, i)
+
+        line.delete(oldLine)
+
+        newLine =
+             line.new(
+                 startBar,
+                 startPrice,
+                 x2,
+                 y2,
+                 xloc=xloc.bar_index,
+                 extend=extend.right,
+                 color=array.get(colors, i),
+                 width=i == 4 ? 3 : 1)
+
+        array.set(fanLines, i, newLine)
+
+    //--------------------------------------------------
+    // ANGLE BISECTOR
+    //--------------------------------------------------
+
+    line.delete(bisector)
+
+    bisector :=
+         line.new(
+             startBar,
+             startPrice,
+             startBar + extendBars,
+             startPrice + halfSlope * extendBars,
+             xloc=xloc.bar_index,
+             extend=extend.right,
+             color=color.white,
+             width=3,
+             style=line.style_dashed)
+
+//--------------------------------------------------
+// VISUAL MARKERS
+//--------------------------------------------------
+
+plotshape(
+     bar_index == startBar,
+     style=shape.circle,
+     location=location.absolute,
+     color=color.lime,
+     size=size.small,
+     title="Start")
+
+plotshape(
+     bar_index == endBar,
+     style=shape.circle,
+     location=location.absolute,
+     color=color.red,
+     size=size.small,
+     title="End")
