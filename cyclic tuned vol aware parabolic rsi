@@ -5,6 +5,149 @@
 indicator("Cyclic tuned Parabolic RSI", overlay = false)
 
 
+// Inputs
+Price = input(hl2, title='Price')
+Fundamental = input(20, title='Fundamental')
+Bandwidth = input(0.1, title='Bandwidth')
+
+// Function implementation
+compute_fourier_series_strategy(price, fundamental, bandwidth) =>
+    // Initialize variables
+    var float g1 = 0.0
+    var float s1 = 0.0
+    var float l1 = 0.0
+    var float bp1 = 0.0
+    var float q1 = 0.0
+    var float p1 = 0.0
+    var float g2 = 0.0
+    var float s2 = 0.0
+    var float l2 = 0.0
+    var float bp2 = 0.0
+    var float q2 = 0.0
+    var float p2 = 0.0
+    var float g3 = 0.0
+    var float s3 = 0.0
+    var float l3 = 0.0
+    var float bp3 = 0.0
+    var float q3 = 0.0
+    var float p3 = 0.0
+    var float wave = 0.0
+    var float roc = 0.0
+    var float trigger = 0.0
+    var float pi = 2 * math.asin(1)
+
+    // Compute filter coefficients
+    l1 := math.cos(2 * pi / fundamental)
+    g1 := math.cos(bandwidth * 2 * pi / fundamental)
+    s1 := 1 / g1 - math.sqrt(1 / (g1 * g1) - 1)
+    l2 := math.cos(2 * pi / (fundamental / 2))
+    g2 := math.cos(bandwidth * 2 * pi / (fundamental / 2))
+    s2 := 1 / g2 - math.sqrt(1 / (g2 * g2) - 1)
+    l3 := math.cos(2 * pi / (fundamental / 3))
+    g3 := math.cos(bandwidth * 2 * pi / (fundamental / 3))
+    s3 := 1 / g3 - math.sqrt(1 / (g3 * g3) - 1)
+
+    // Fundamental Band-Pass
+    bp1 := .5 * (1 - s1) * (price - nz(price[2])) + l1 * (1 + s1) * nz(bp1[1]) - s1 * nz(bp1[2])
+    if bar_index <= 3
+        bp1 := 0
+        bp1
+
+    // Fundamental Quadrature
+    q1 := fundamental / 2 * pi * (bp1 - nz(bp1[1]))
+    if bar_index <= 4
+        q1 := 0
+        q1
+
+    // Second Harmonic Band-Pass
+    bp2 := .5 * (1 - s2) * (price - nz(price[2])) + l2 * (1 + s2) * nz(bp2[1]) - s2 * nz(bp2[2])
+    if bar_index <= 3
+        bp2 := 0
+        bp2
+
+    // Second Harmonic Quadrature
+    q2 := fundamental / 2 * pi * (bp2 - nz(bp2[1]))
+    if bar_index <= 4
+        q2 := 0
+        q2
+
+    // Third Harmonic Band-Pass
+    bp3 := .5 * (1 - s3) * (price - nz(price[2])) + l3 * (1 + s3) * nz(bp3[1]) - s3 * nz(bp3[2])
+    if bar_index <= 3
+        bp3 := 0
+        bp3
+
+    // Third Harmonic Quadrature
+    q3 := fundamental / 2 * pi * (bp3 - nz(bp3[1]))
+    if bar_index <= 4
+        q3 := 0
+        q3
+
+    // Sum power of each harmonic
+    p1 := 0
+    p2 := 0
+    p3 := 0
+    for count = 0 to fundamental - 1 by 1
+        p1 += nz(bp1[count]) * nz(bp1[count]) + nz(q1[count]) * nz(q1[count])
+        p2 += nz(bp2[count]) * nz(bp2[count]) + nz(q2[count]) * nz(q2[count])
+        p3 += nz(bp3[count]) * nz(bp3[count]) + nz(q3[count]) * nz(q3[count])
+        p3
+
+    // Add harmonics together
+    if p1 != 0
+        wave := bp1 + math.sqrt(p2 / p1) * bp2 + math.sqrt(p3 / p1) * bp3
+        wave
+
+    // Calculate ROC and trigger
+    roc := fundamental / 4 * pi * (wave - nz(wave[2]))
+    trigger := 0.05 + 0.9 * nz(roc[1])
+
+    [roc, trigger]
+
+// Function definition
+[roc, trigger] = compute_fourier_series_strategy(Price, Fundamental, Bandwidth)
+
+// Alerts
+alertcondition(ta.crossover(roc, trigger), title='Buy Signal', message='Ehlers Fourier Series Buy Signal')
+alertcondition(ta.crossunder(roc, trigger), title='Sell Signal', message='Ehlers Fourier Series Sell Signal')
+
+normalize(value, min, max) =>
+    100 * (value - min) / (max - min)
+
+
+// Plots
+plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(#c7c5b7, 0), linewidth=1)
+plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(#757575, 0), linewidth=1)
+//fill(plot1, plot2, color=roc > trigger ? color.yellow : color.fuchsia)
+
+// Labels
+//l = ta.crossunder(roc, trigger) ? label.new(bar_index, roc[1], 'SELL', color=color.red, textcolor=color.white, style=label.style_label_down, yloc=yloc.price, size=size.small) : ta.crossover(roc, trigger) ? label.new(bar_index, roc[1], 'BUY', color=color.green, textcolor=color.white, style=label.style_label_up, yloc=yloc.price, size=size.small) : na
+
+
+plotshape(
+     ta.crossover(roc, trigger) ,
+     title="Cycle Buy Near",
+     style=shape.labelup,
+     location=location.belowbar,
+     text="Buy Near",
+     color=color.blue,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=0,
+     force_overlay=true)
+
+plotshape(
+     ta.crossunder(roc, trigger) ,
+     title="Cycle Sell Near",
+     style=shape.labeldown,
+     location=location.abovebar,
+     text="Sell Near",
+     color=color.purple,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=0,
+     force_overlay=true)
+
 src = close
 
 // { Inputs
@@ -152,7 +295,7 @@ if array.size(ziggyzags) >= 6
 
 
 // Function to calculate dynamic lower and upper bounds (db, ub)
-calc_bands(float srcSeries, int memory, float level) =>
+calc_bands(bool condition,float srcSeries, int memory, float level) =>
     float lmax = -999999.0
     float lmin = 999999.0
     
@@ -190,8 +333,12 @@ calc_bands(float srcSeries, int memory, float level) =>
         if ratio >= aperc
             ub := testvalue
             break
-
+    //if condition  
+    //    [srcSeries,srcSeries]
+    //else 
     [db, ub]
+    
+    
 
 
 //... zzl hold the lengths of the distance between h-h, l-l / only need the last 3 points
@@ -240,15 +387,19 @@ up = ta.rma(math.max(ta.change(src), 0), cyclelen)
 down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
 rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
 crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
-[db,ub] = calc_bands(crsi,cyclicmemory,leveling)
-[db1,ub1] = calc_bands(crsi,cyclicmemory/2,leveling)
-[db2,ub2] = calc_bands(crsi,cyclicmemory*2,leveling)
+cond1 =  ta.crossunder(roc, trigger) 
+cond2 = ta.crossover(roc, trigger)
+cond3 = roc > 95 and trigger > 95
+cond4 = roc < 5 and trigger < 5
+[db,ub] = calc_bands( (cond1 and cond3) or (cond2 and cond4),crsi,cyclicmemory,leveling)
+[db1,ub1] = calc_bands((cond1 and cond3) or (cond2 and cond4) ,crsi,cyclicmemory/2,leveling)
+[db2,ub2] = calc_bands((cond1 and cond3) or (cond2 and cond4),crsi,cyclicmemory*2,leveling)
 
 lowband = plot(db, "LowBand #1", color=color.aqua)
 highband = plot(ub, "HighBand #1", color=color.aqua)
 //fill(h1, h2, color=color.rgb(178, 181, 190, 86))
 fill(lowband, highband, color=color.rgb(120, 123, 134, 92))
-plot(crsi, "CRSI #1", color=color.fuchsia)
+plot(crsi, "CRSI #1", color=color.rgb(251, 248, 64))
 
 
 // Detect break above HighBand
@@ -655,53 +806,7 @@ plotshape(
      offset=-divRight,
      force_overlay=true)
 
-plotshape(
-     (divState != 0 and crsiDifflb1 <= crsiaway )or (bullDiv),
-     title="Bull Div Chart",
-     style=shape.labelup,
-     location=location.belowbar,
-     text="BuD",
-     color=color.green,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
 
-plotshape(
-     (divState != 0 and crsiDiffub1 <= crsiaway) or bearDiv,
-     title="Bear Div Chart",
-     style=shape.labeldown,
-     location=location.abovebar,
-     text="BeD",
-     color=color.maroon,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
-
-plotshape(
-     (divState != 0 and crsiDifflb2 <= crsiaway )or (bullDiv),
-     title="Bull Div Chart",
-     style=shape.labelup,
-     location=location.belowbar,
-     text="BuD",
-     color=color.blue,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
-
-plotshape(
-     (divState != 0 and crsiDiffub2 <= crsiaway) or bearDiv,
-     title="Bear Div Chart",
-     style=shape.labeldown,
-     location=location.abovebar,
-     text="BeD",
-     color=color.purple,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
 
 // Optional: visualize active divergence regime
 bgcolor(
@@ -778,7 +883,7 @@ float cexpected_future_vol = torque * (2 * expected_future_vol - expected_future
 plot(cexpected_future_vol*30, "Predicted Heston Vol", color=color.rgb(122, 122, 122), linewidth=2)
 
 // 4. Upper and Lower Expectation Bands
-[cup,cdn]=calc_bands(cexpected_future_vol,cyclicmemory,10)
+[cup,cdn]=calc_bands(cond1 and cond3 or cond2 and cond4 ,cexpected_future_vol,cyclicmemory,10)
 p_up = plot(cup*30, "Upper Vol Band (+1 StdDev)", color=color.new(color.red, 40))
 p_dn = plot(cdn*30, "Lower Vol Band (-1 StdDev)", color=color.new(color.green, 40))
 fill(p_up, p_dn, color=color.new(color.fuchsia, 90), title="Forecast Volatility Spread")
@@ -806,146 +911,47 @@ if barstate.islast
     //table.cell(infoBox, 0, 4,  string(math.sqrt(math.max(expected_future_var, 0))), text_color=color.gray, text_size=size.small)
 
 
-
-// Inputs
-Price = input(hl2, title='Price')
-Fundamental = input(20, title='Fundamental')
-Bandwidth = input(0.1, title='Bandwidth')
-
-// Function implementation
-compute_fourier_series_strategy(price, fundamental, bandwidth) =>
-    // Initialize variables
-    var float g1 = 0.0
-    var float s1 = 0.0
-    var float l1 = 0.0
-    var float bp1 = 0.0
-    var float q1 = 0.0
-    var float p1 = 0.0
-    var float g2 = 0.0
-    var float s2 = 0.0
-    var float l2 = 0.0
-    var float bp2 = 0.0
-    var float q2 = 0.0
-    var float p2 = 0.0
-    var float g3 = 0.0
-    var float s3 = 0.0
-    var float l3 = 0.0
-    var float bp3 = 0.0
-    var float q3 = 0.0
-    var float p3 = 0.0
-    var float wave = 0.0
-    var float roc = 0.0
-    var float trigger = 0.0
-    var float pi = 2 * math.asin(1)
-
-    // Compute filter coefficients
-    l1 := math.cos(2 * pi / fundamental)
-    g1 := math.cos(bandwidth * 2 * pi / fundamental)
-    s1 := 1 / g1 - math.sqrt(1 / (g1 * g1) - 1)
-    l2 := math.cos(2 * pi / (fundamental / 2))
-    g2 := math.cos(bandwidth * 2 * pi / (fundamental / 2))
-    s2 := 1 / g2 - math.sqrt(1 / (g2 * g2) - 1)
-    l3 := math.cos(2 * pi / (fundamental / 3))
-    g3 := math.cos(bandwidth * 2 * pi / (fundamental / 3))
-    s3 := 1 / g3 - math.sqrt(1 / (g3 * g3) - 1)
-
-    // Fundamental Band-Pass
-    bp1 := .5 * (1 - s1) * (price - nz(price[2])) + l1 * (1 + s1) * nz(bp1[1]) - s1 * nz(bp1[2])
-    if bar_index <= 3
-        bp1 := 0
-        bp1
-
-    // Fundamental Quadrature
-    q1 := fundamental / 2 * pi * (bp1 - nz(bp1[1]))
-    if bar_index <= 4
-        q1 := 0
-        q1
-
-    // Second Harmonic Band-Pass
-    bp2 := .5 * (1 - s2) * (price - nz(price[2])) + l2 * (1 + s2) * nz(bp2[1]) - s2 * nz(bp2[2])
-    if bar_index <= 3
-        bp2 := 0
-        bp2
-
-    // Second Harmonic Quadrature
-    q2 := fundamental / 2 * pi * (bp2 - nz(bp2[1]))
-    if bar_index <= 4
-        q2 := 0
-        q2
-
-    // Third Harmonic Band-Pass
-    bp3 := .5 * (1 - s3) * (price - nz(price[2])) + l3 * (1 + s3) * nz(bp3[1]) - s3 * nz(bp3[2])
-    if bar_index <= 3
-        bp3 := 0
-        bp3
-
-    // Third Harmonic Quadrature
-    q3 := fundamental / 2 * pi * (bp3 - nz(bp3[1]))
-    if bar_index <= 4
-        q3 := 0
-        q3
-
-    // Sum power of each harmonic
-    p1 := 0
-    p2 := 0
-    p3 := 0
-    for count = 0 to fundamental - 1 by 1
-        p1 += nz(bp1[count]) * nz(bp1[count]) + nz(q1[count]) * nz(q1[count])
-        p2 += nz(bp2[count]) * nz(bp2[count]) + nz(q2[count]) * nz(q2[count])
-        p3 += nz(bp3[count]) * nz(bp3[count]) + nz(q3[count]) * nz(q3[count])
-        p3
-
-    // Add harmonics together
-    if p1 != 0
-        wave := bp1 + math.sqrt(p2 / p1) * bp2 + math.sqrt(p3 / p1) * bp3
-        wave
-
-    // Calculate ROC and trigger
-    roc := fundamental / 4 * pi * (wave - nz(wave[2]))
-    trigger := 0.05 + 0.9 * nz(roc[1])
-
-    [roc, trigger]
-
-// Function definition
-[roc, trigger] = compute_fourier_series_strategy(Price, Fundamental, Bandwidth)
-
-// Alerts
-alertcondition(ta.crossover(roc, trigger), title='Buy Signal', message='Ehlers Fourier Series Buy Signal')
-alertcondition(ta.crossunder(roc, trigger), title='Sell Signal', message='Ehlers Fourier Series Sell Signal')
-
-normalize(value, min, max) =>
-    100 * (value - min) / (max - min)
+multp = input.float(2.0, "Multiplier", minval=0.1)
 
 
-// Plots
-plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(#c7c5b7, 0), linewidth=1)
-plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(#757575, 0), linewidth=1)
-//fill(plot1, plot2, color=roc > trigger ? color.yellow : color.fuchsia)
+var float sum = 0.0
+var float sumSq = 0.0
+var int count = 0
 
-// Labels
-//l = ta.crossunder(roc, trigger) ? label.new(bar_index, roc[1], 'SELL', color=color.red, textcolor=color.white, style=label.style_label_down, yloc=yloc.price, size=size.small) : ta.crossover(roc, trigger) ? label.new(bar_index, roc[1], 'BUY', color=color.green, textcolor=color.white, style=label.style_label_up, yloc=yloc.price, size=size.small) : na
+if (cond1 and cond3) or (cond2 and cond4)
+    sum := 0.0
+    sumSq := 0.0
+    count := 0
+
+sum += crsi
+sumSq += crsi * crsi
+count += 1
+
+if count > domcycle/2
+    sum -= crsi[domcycle/2]
+    sumSq -= crsi[domcycle/2] * crsi[domcycle/2]
+    count -= 1
+
+basis = count > 0 ? sum / count : na
+variance = count > 1 ? (sumSq - sum * sum / count) / count : 0.0
+dev = math.sqrt(math.max(variance, 0.0))
+
+upper = basis + 1.272  * dev
+lower = basis - 1.272 * dev
+upper1 = basis + 1.414 * dev
+lower1 = basis - 1.414 * dev
+upper2 = basis + 1.618 * dev
+lower2 = basis - 1.618 * dev
+upper3 = basis + 2.000 * dev
+lower3 = basis - 2 * dev
 
 
-plotshape(
-     ta.crossover(roc, trigger) ,
-     title="Cycle Buy Near",
-     style=shape.labelup,
-     location=location.belowbar,
-     text="Buy Near",
-     color=color.blue,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
-
-plotshape(
-     ta.crossunder(roc, trigger) ,
-     title="Cycle Sell Near",
-     style=shape.labeldown,
-     location=location.abovebar,
-     text="Sell Near",
-     color=color.purple,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
+plot(basis, "Basis", color=color.rgb(65, 141, 255))
+plot(upper, "Upper", color=color.gray)
+plot(lower, "Lower", color=color.gray)
+plot(upper1, "Upper", color=color.gray)
+plot(lower1, "Lower", color=color.gray)
+plot(upper2, "Upper", color=color.gray)
+plot(lower2, "Lower", color=color.gray)
+plot(upper3, "Upper", color=color.gray)
+plot(lower3, "Lower", color=color.gray)
