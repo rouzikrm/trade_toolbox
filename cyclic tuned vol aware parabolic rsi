@@ -804,3 +804,148 @@ if barstate.islast
     bool feller_pass = (2 * kappa * theta) > (xi * xi)
     table.cell(infoBox, 1, 4, feller_pass ? "Satisfied" : "Violated", text_color=feller_pass ? color.green : color.red, text_size=size.small)
     //table.cell(infoBox, 0, 4,  string(math.sqrt(math.max(expected_future_var, 0))), text_color=color.gray, text_size=size.small)
+
+
+
+// Inputs
+Price = input(hl2, title='Price')
+Fundamental = input(20, title='Fundamental')
+Bandwidth = input(0.1, title='Bandwidth')
+
+// Function implementation
+compute_fourier_series_strategy(price, fundamental, bandwidth) =>
+    // Initialize variables
+    var float g1 = 0.0
+    var float s1 = 0.0
+    var float l1 = 0.0
+    var float bp1 = 0.0
+    var float q1 = 0.0
+    var float p1 = 0.0
+    var float g2 = 0.0
+    var float s2 = 0.0
+    var float l2 = 0.0
+    var float bp2 = 0.0
+    var float q2 = 0.0
+    var float p2 = 0.0
+    var float g3 = 0.0
+    var float s3 = 0.0
+    var float l3 = 0.0
+    var float bp3 = 0.0
+    var float q3 = 0.0
+    var float p3 = 0.0
+    var float wave = 0.0
+    var float roc = 0.0
+    var float trigger = 0.0
+    var float pi = 2 * math.asin(1)
+
+    // Compute filter coefficients
+    l1 := math.cos(2 * pi / fundamental)
+    g1 := math.cos(bandwidth * 2 * pi / fundamental)
+    s1 := 1 / g1 - math.sqrt(1 / (g1 * g1) - 1)
+    l2 := math.cos(2 * pi / (fundamental / 2))
+    g2 := math.cos(bandwidth * 2 * pi / (fundamental / 2))
+    s2 := 1 / g2 - math.sqrt(1 / (g2 * g2) - 1)
+    l3 := math.cos(2 * pi / (fundamental / 3))
+    g3 := math.cos(bandwidth * 2 * pi / (fundamental / 3))
+    s3 := 1 / g3 - math.sqrt(1 / (g3 * g3) - 1)
+
+    // Fundamental Band-Pass
+    bp1 := .5 * (1 - s1) * (price - nz(price[2])) + l1 * (1 + s1) * nz(bp1[1]) - s1 * nz(bp1[2])
+    if bar_index <= 3
+        bp1 := 0
+        bp1
+
+    // Fundamental Quadrature
+    q1 := fundamental / 2 * pi * (bp1 - nz(bp1[1]))
+    if bar_index <= 4
+        q1 := 0
+        q1
+
+    // Second Harmonic Band-Pass
+    bp2 := .5 * (1 - s2) * (price - nz(price[2])) + l2 * (1 + s2) * nz(bp2[1]) - s2 * nz(bp2[2])
+    if bar_index <= 3
+        bp2 := 0
+        bp2
+
+    // Second Harmonic Quadrature
+    q2 := fundamental / 2 * pi * (bp2 - nz(bp2[1]))
+    if bar_index <= 4
+        q2 := 0
+        q2
+
+    // Third Harmonic Band-Pass
+    bp3 := .5 * (1 - s3) * (price - nz(price[2])) + l3 * (1 + s3) * nz(bp3[1]) - s3 * nz(bp3[2])
+    if bar_index <= 3
+        bp3 := 0
+        bp3
+
+    // Third Harmonic Quadrature
+    q3 := fundamental / 2 * pi * (bp3 - nz(bp3[1]))
+    if bar_index <= 4
+        q3 := 0
+        q3
+
+    // Sum power of each harmonic
+    p1 := 0
+    p2 := 0
+    p3 := 0
+    for count = 0 to fundamental - 1 by 1
+        p1 += nz(bp1[count]) * nz(bp1[count]) + nz(q1[count]) * nz(q1[count])
+        p2 += nz(bp2[count]) * nz(bp2[count]) + nz(q2[count]) * nz(q2[count])
+        p3 += nz(bp3[count]) * nz(bp3[count]) + nz(q3[count]) * nz(q3[count])
+        p3
+
+    // Add harmonics together
+    if p1 != 0
+        wave := bp1 + math.sqrt(p2 / p1) * bp2 + math.sqrt(p3 / p1) * bp3
+        wave
+
+    // Calculate ROC and trigger
+    roc := fundamental / 4 * pi * (wave - nz(wave[2]))
+    trigger := 0.05 + 0.9 * nz(roc[1])
+
+    [roc, trigger]
+
+// Function definition
+[roc, trigger] = compute_fourier_series_strategy(Price, Fundamental, Bandwidth)
+
+// Alerts
+alertcondition(ta.crossover(roc, trigger), title='Buy Signal', message='Ehlers Fourier Series Buy Signal')
+alertcondition(ta.crossunder(roc, trigger), title='Sell Signal', message='Ehlers Fourier Series Sell Signal')
+
+normalize(value, min, max) =>
+    100 * (value - min) / (max - min)
+
+
+// Plots
+plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(color.yellow, 0), linewidth=1)
+plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(color.fuchsia, 0), linewidth=1)
+//fill(plot1, plot2, color=roc > trigger ? color.yellow : color.fuchsia)
+
+// Labels
+//l = ta.crossunder(roc, trigger) ? label.new(bar_index, roc[1], 'SELL', color=color.red, textcolor=color.white, style=label.style_label_down, yloc=yloc.price, size=size.small) : ta.crossover(roc, trigger) ? label.new(bar_index, roc[1], 'BUY', color=color.green, textcolor=color.white, style=label.style_label_up, yloc=yloc.price, size=size.small) : na
+
+
+plotshape(
+     ta.crossover(roc, trigger) ,
+     title="Cycle Buy Near",
+     style=shape.labelup,
+     location=location.belowbar,
+     text="Buy Near",
+     color=color.blue,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+plotshape(
+     ta.crossunder(roc, trigger) ,
+     title="Cycle Sell Near",
+     style=shape.labeldown,
+     location=location.abovebar,
+     text="Sell Near",
+     color=color.purple,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
