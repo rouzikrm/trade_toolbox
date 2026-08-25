@@ -767,15 +767,15 @@ float lower_band  = math.max(expected_future_vol - 2*vol_std_dev, 0)
 // Plotting Output
 // ==========================================
 // 1. Historical Realized / Spot Volatility
-plot(current_spot_vol*30, "Spot Volatility (v0)", color=color.yellow, linewidth=2)
+plot(current_spot_vol*30, "Spot Volatility (v0)", color=color.rgb(199, 199, 199), linewidth=2)
 
 // 2. Long-Term Volatility Floor/Ceiling (Theta)
-plot(long_term_vol*30, "Long-Term Mean Vol (Theta)", color=color.blue, style=plot.style_line, linewidth=1)
+//plot(long_term_vol*30, "Long-Term Mean Vol (Theta)", color=color.blue, style=plot.style_line, linewidth=1)
 
 float cexpected_future_vol = torque * (2 * expected_future_vol - expected_future_vol[phasingLag]) + (1 - torque) * nz(expected_future_vol[1])
 
 // 3. Predicted Mean Volatility
-plot(cexpected_future_vol*30, "Predicted Heston Vol", color=color.fuchsia, linewidth=2)
+plot(cexpected_future_vol*30, "Predicted Heston Vol", color=color.rgb(122, 122, 122), linewidth=2)
 
 // 4. Upper and Lower Expectation Bands
 [cup,cdn]=calc_bands(cexpected_future_vol,cyclicmemory,10)
@@ -918,8 +918,8 @@ normalize(value, min, max) =>
 
 
 // Plots
-plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(color.yellow, 0), linewidth=1)
-plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(color.fuchsia, 0), linewidth=1)
+plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(#c7c5b7, 0), linewidth=1)
+plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(#757575, 0), linewidth=1)
 //fill(plot1, plot2, color=roc > trigger ? color.yellow : color.fuchsia)
 
 // Labels
