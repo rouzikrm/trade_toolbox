@@ -3,7 +3,7 @@
 
 //@version=6
 indicator("Cyclic tuned Parabolic RSI", overlay = false)
-
+domcycle =input.int(20, minval=10, title="Dominant Cycle Length #1")
 
 // Inputs
 Price = input(hl2, title='Price')
@@ -160,7 +160,6 @@ detrendS = input.string('On', '  Detrend', options=['On', 'Off'], group='DPO
 pivotLeft = input.int(5, "Pivot Left")
 pivotRight = input.int(5, "Pivot Right")
 fastLength = input.int(3, '  Fast  - ', group='DPO', inline='l')
-slowLength = input.int(50, ' Slow:', group='DPO', inline='l')
 crsiaway = input.int(7, "crsi away distance")
 //... ZigZag
 zigperiod = input.int(30, '  Period', minval=5, group='ZigZag', inline='p')
@@ -219,7 +218,7 @@ update_zigzag(pointer, value, bindex, dir) =>
 
 //... DPO - Detrending
 ppo = if detrenddata
-    100 * (ta.ema(src, fastLength) - ta.ema(src, slowLength)) / ta.ema(src, slowLength)
+    100 * (ta.ema(src, fastLength) - ta.ema(src, domcycle)) / ta.ema(src, domcycle)
 else
     ppo = src
     ppo
@@ -370,7 +369,7 @@ if barstate.islast
 // --- CRSI #1 (original)
 // ===================================================================
 
-domcycle =input.int(20, minval=10, title="Dominant Cycle Length #1")
+
 crsi = 0.0
 cyclelen = domcycle / 2
 vibration = 10
@@ -434,9 +433,6 @@ inc         = input.float(0.02, "Increment", step = 0.01, inline = "sar", group 
 max         = input.float(0.2, "Maximum", step = 0.01, inline = "sar", group = "SAR")
 color_up    = input.color(#EEA47F, "", inline = "c")
 color_dn    = input.color(#00539C, "", inline = "c")
-smalen = input.int(20, "SMA Length")
-rellen = input.int(20, "Relative Volume Length")
-zlen   = input.int(20, "Z-Score Length")
 tf            = input.timeframe('1', 'LTF Timeframe')
 
 mult   = input.float(1.0, "Multiplier 1")
@@ -452,17 +448,17 @@ dncol_mult3 = input.color(color.rgb(255, 218, 218), "Sell Color")
 
 // === FUNCTIONS === //
 // SMA Function
-f_mult1(src) => ta.sma(src, smalen) * (mult + 1)
-f_mult2(src) => ta.sma(src, smalen) * (mult2 + 1)
-f_mult3(src) => ta.sma(src, smalen) * (mult3 + 1)
+f_mult1(src) => ta.sma(src, domcycle) * (mult + 1)
+f_mult2(src) => ta.sma(src, domcycle) * (mult2 + 1)
+f_mult3(src) => ta.sma(src, domcycle) * (mult3 + 1)
 
 // Relative function
-f_relative(src) => src / ta.sma(src, rellen)
+f_relative(src) => src / ta.sma(src, domcycle)
 
 // Z-Score function
 f_zscore(src) =>
-    mean = ta.sma(src, zlen)
-    std  = ta.stdev(src, zlen)
+    mean = ta.sma(src, domcycle)
+    std  = ta.stdev(src, domcycle)
     (src - mean) / std
 
 // === VOLUME LOGIC === //
@@ -816,8 +812,6 @@ bgcolor(
 // ==========================================
 // User Inputs
 // ==========================================
-int   hist_length = input.int(30, "Historical Estimation Window", minval=10, tooltip="Bars used to estimate current variance v0 and drift mu.")
-int   long_length = input.int(200, "Long-Term Window", minval=50, tooltip="Bars used to estimate long-term variance theta.")
 int   forecast_steps = input.int(20, "Forecast Horizon (Bars Ahead)", minval=1, maxval=100)
 
 // Manual Override / Fine-Tuning Parameters
@@ -835,16 +829,16 @@ float ret = math.log(close / close[1])
 
 // 2. Initial Variance v0 (annualized standard deviation squared, standardizing dt=1 day = 1/252)
 float dt = 1.0 / 252.0
-float sample_var = ta.variance(ret, hist_length) / dt
+float sample_var = ta.variance(ret, domcycle) / dt
 float v0 = math.max(sample_var, 0.0001)
 
 // 3. Long-Term Variance Theta
-float long_var = ta.variance(ret, long_length) / dt
+float long_var = ta.variance(ret, domcycle*4) / dt
 float theta = use_manual ? (0.20 * 0.20) : math.max(long_var, 0.0001)
 
 // 4. Drift (Mu) & Vol-of-Vol (Xi) estimations
-float mu    = ta.sma(ret, hist_length) / dt
-float xi    = use_manual ? xi_in : math.sqrt(ta.variance(ta.change(math.sqrt(sample_var)), hist_length) / dt)
+float mu    = ta.sma(ret, domcycle) / dt
+float xi    = use_manual ? xi_in : math.sqrt(ta.variance(ta.change(math.sqrt(sample_var)), domcycle*4) / dt)
 float kappa = use_manual ? kappa_in : 2.0
 float rho   = use_manual ? rho_in : -0.5
 
@@ -1186,142 +1180,91 @@ if force_overlay
 // Plot trend start
 //plotchar(ob_trend_start ? bear_signal_loc : na, char="◡", color=bearcol, location=getlocation(mode, 'top'))
 //plotchar(os_trend_start ? bull_signal_loc : na, char="◠", color=bullcol, location=getlocation(mode, 'bottom'))
+// --- Inputs ---
+// 'confirm = true' allows you to click on a specific candle when adding the script or changing inputs
+selectedTime = input.time(timestamp("2026-01-01 00:00"), title="Click Chart to Select Candle", confirm=true)
+tablePosition = input.string("top_right", title="Table Position", options=["top_right", "top_left", "bottom_right", "bottom_left"])
+isHigh = input.bool(false,"pick high?")
+// --- Find Selected Candle Values ---
+var float selectedHighLow = na
+var int firstbar = na
+// Check if the current bar's time matches the selected time
+// We look for the bar where the time matches or falls within the bar duration
+if (time <= selectedTime and (time + timeframe.multiplier * 60000) > selectedTime) or (time == selectedTime)
+    if  na(firstbar)
+        firstbar := bar_index
+    if isHigh
+        selectedHighLow := high
+    else
+        selectedHighLow :=low
 
+// Keep the value persistent across bars so the table always shows it
 
-// Alerts
+selectedHighLow := ta.valuewhen(not na(selectedHighLow), selectedHighLow, 0)
 
-varip groupAlerts = "Alerts"
-bullStartOn = input.bool(true, "Bull trend start ⏹", group=groupAlerts, inline="bullStart")
-bullStartTxt = input.string("%RTE bull trend start ⏹", "", group=groupAlerts, inline="bullStart")
-bearStartOn = input.bool(true, "Bear trend start ⏹", group=groupAlerts, inline="bearStart")
-bearStartTxt = input.string("%RTE bear trend start ⏹", "", group=groupAlerts, inline="bearStart")
-bullReversalOn = input.bool(true, "Bull trend break ▼", group=groupAlerts, inline="bullReversal")
-bullReversalTxt = input.string("%RTE bull trend break ▼", "", group=groupAlerts, inline="bullReversal")
-bearReversalOn = input.bool(true, "Bear trend break ▲", group=groupAlerts, inline="bearReversal")
-bearReversalTxt = input.string("%RTE bear trend break ▲", "", group=groupAlerts, inline="bearReversal")
-bullCrossOn = input.bool(false, "Bull cross ⏺", group=groupAlerts, inline="bullCross")
-bullCrossTxt = input.string("Bullish crossover", "", group=groupAlerts, inline="bullCross")
-bearCrossOn = input.bool(false, "Bear cross ⏺", group=groupAlerts, inline="bearCross")
-bearCrossTxt = input.string("Bearish crossover", "", group=groupAlerts, inline="bearCross")
+// --- Calculations ---
+// Square root of square root (High ^ 0.25)
+doubleSqrt = math.pow(selectedHighLow, 0.25)
 
-if (bullStartOn and ob_trend_start)
-    alert(message=bullStartTxt, freq=alert.freq_once_per_bar_close)
-if (bearStartOn and os_trend_start)
-    alert(message=bearStartTxt, freq=alert.freq_once_per_bar_close)
-if (bullReversalOn and ob_reversal)
-    alert(message=bullReversalTxt, freq=alert.freq_once_per_bar_close)
-if (bearReversalOn and os_reversal)
-    alert(message=bearReversalTxt, freq=alert.freq_once_per_bar_close)
-if (bullCrossOn and cross_bull)
-    alert(message=bullCrossTxt, freq=alert.freq_once_per_bar_close)
-if (bearCrossOn and cross_bear)
-    alert(message=bearCrossTxt, freq=alert.freq_once_per_bar_close)
+// Cube root of cube root (High ^ (1/9))
+doubleCbrt = math.pow(selectedHighLow, 1.0 / 9.0)
 
-alertcondition(ob_reversal, "Arrow Down (Bearish Reversal)", message="Arrow Down: Overbought trend is exhausted")
-alertcondition(os_reversal, "Arrow Up (Bullish Reversal)", message="Arrow Up: Oversold trend is exhausted")
-alertcondition(ob_trend_start, "Overbought Trend Started", message="Warning: Possible overbought trend exhaustion")
-alertcondition(os_trend_start, "Oversold Trend Started", message="Warning: Possible oversold trend exhaustion")
-alertcondition(cross_bull, "Bullish Crossover", message="Potential bullish crossover printed")
-alertcondition(cross_bear, "Bearish Crossover", message="Potential bearish crossover printed")
+// --- Time Calculations ---
 
-// ---------------------------------------------
-// Experimental difference idea
-//varip diffGroupName = "Difference (Experimental)"
-//plot_difference = input.bool(false, "Plot Difference", group=diffGroupName, tooltip="I thought maybe this would show buying or selling phase... but in the end I don't think this is very useful data. It's interesting to look at though!")
-//invert_difference = input.bool(false, "Invert Difference Calcuation", group=diffGroupName)
-//diffcol = input.color(color.new(#BABABA, 75), title="Difference Fill Color", group=diffGroupName)
-//difference = invert_difference ? s_percentR-l_percentR : l_percentR-s_percentR
-//difference := difference - 50
-// Plot experimental difference idea
-//diff_plot = plot(plot_difference ? difference : na, title="Difference", color=color.new(color.white,80), linewidth=1, style=plot.style_line)
-//fill(diff_plot, plot(-50, color=invisible), title="Difference Fill", color=diffcol)
-// ---------------------------------------------
+shiftedTime1 = selectedTime + ((int(doubleSqrt*100)) * 60 * 1000)
+shiftedTime2 = selectedTime + ((int(doubleCbrt*100)) * 60 * 1000)
+shiftedTime11 = selectedTime + ((int(doubleSqrt*10)) * 60 * 1000)
+shiftedTime22 = selectedTime + ((int(doubleCbrt*10)) * 60 * 1000)
 
-const string group_strategy = "Strategy (send external signal to TTS backtester)"
+// Format the shifted time to display as "YYYY-MM-DD HH:MM" in the table
+shiftedTimeFormatted = str.format_time(shiftedTime1, "yyyy-MM-dd HH:mm z", "GMT+3:30")
+shiftedTimeFormatted2 = str.format_time(shiftedTime2, "yyyy-MM-dd HH:mm z", "GMT+3:30")
+shiftedTimeFormatted1 = str.format_time(shiftedTime11, "yyyy-MM-dd HH:mm z", "GMT+3:30")
+shiftedTimeFormatted22 = str.format_time(shiftedTime22, "yyyy-MM-dd HH:mm z", "GMT+3:30")
+// --- Create and Populate Table ---
+var table rootTable = na
 
-bool plotStrategyEntry = input.bool(false, "Plot Strategy Entries on Chart", group=group_strategy)
-bool longDealsEnabled = input.bool(true, "Enable Long Deals", group=group_strategy)
-bool shortDealsEnabled = input.bool(true, "Enable Short Deals", group=group_strategy)
+// Convert string input to actual position type
+pos = tablePosition == "top_right" ? position.top_right :
+      tablePosition == "top_left" ? position.top_left :
+      tablePosition == "bottom_right" ? position.bottom_right : position.bottom_left
 
-strategy1 = "1 Trend Following @ Square"
-strategy2 = "2 Reversal @ Square"
-strategy3 = "3 Reversal Trade @ Triangle"
-strategy4 = "4 Re-enter Trend Trade @ Triangle"
-strategy5 = "5 Pings"
-strategy6 = "6 Zero Line Cross"
+// Initialize the table once
+if barstate.islast
+    rootTable := table.new(position=pos, columns=2, rows=7, bgcolor=color.new(color.black, 20), border_color=color.gray, border_width=1)
+    
+    // Header Style
+    table.cell(rootTable, 0, 0, "Metric", bgcolor=color.blue, text_color=color.white, text_size=size.small)
+    table.cell(rootTable, 1, 0, "Value", bgcolor=color.blue, text_color=color.white, text_size=size.small)
+    
+    if not na(selectedHighLow)
+        // Row 1: Square Root of Square Root
+        table.cell(rootTable, 0, 1, "√√(High)", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 1, str.tostring(doubleSqrt, "#.#####"), bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        
+        // Row 2: Cube Root of Cube Root
+        table.cell(rootTable, 0, 2, "³√³√(High)", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 2, str.tostring(doubleCbrt, "#.#####"), bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        
+        table.cell(rootTable, 0, 3, "Square Time", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 3, shiftedTimeFormatted, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 4, "Cube Time", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 4, shiftedTimeFormatted2, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 5, "Square Time", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 5, shiftedTimeFormatted1, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 6, "Cube Time", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 6, shiftedTimeFormatted22, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+   
+    else
+        table.cell(rootTable, 0, 1, "Status", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 1, "Click a candle in settings", bgcolor=color.maroon, text_color=color.white, text_size=size.small)
 
-strategyEntry = input.string(strategy3, "Strategy Entry", options=[strategy1, strategy2, strategy3, strategy4, strategy5, strategy6], group=group_strategy)
+// --- Visual Marker ---
+// Plot a small dot above the selected candle to confirm selection
+isSelectedBar = (time <= selectedTime and (time + timeframe.multiplier * 60000) > selectedTime) or (time == selectedTime)
+bgcolor((time <= selectedTime and (time + timeframe.multiplier * 60000) > selectedTime) or (time == selectedTime)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background", force_overlay=true)
 
-bool startLongDeal = false
-bool startShortDeal = false
-bool endLongDeal = false
-bool endShortDeal = false
-
-switch strategyEntry
-    strategy1 =>
-        if ob_trend_start and longDealsEnabled
-            startLongDeal := true
-        else if os_trend_start and shortDealsEnabled
-            startShortDeal := true
-    strategy2 =>
-        if os_trend_start and longDealsEnabled
-            startLongDeal := true
-        else if ob_trend_start and shortDealsEnabled
-            startShortDeal := true
-
-    strategy3 =>
-        //strategy := ob_reversal ? -1 : os_reversal ? 1 : 0
-        if ob_reversal and shortDealsEnabled
-            startShortDeal := true
-        else if os_reversal and longDealsEnabled
-            startLongDeal := true
-
-    strategy4 =>
-        //strategy := ob_reversal ? -1 : os_reversal ? 1 : 0
-        if os_reversal and shortDealsEnabled
-            startShortDeal := true
-        else if ob_reversal and longDealsEnabled
-            startLongDeal := true
-
-    strategy5 =>
-        //strategy :=  ? 1 : cross_bear ? -1 : 0    
-        if cross_bull and longDealsEnabled
-            startLongDeal := true
-        else if cross_bear and shortDealsEnabled
-            startShortDeal := true
-
-    strategy6 =>
-        if zero_long and longDealsEnabled
-            startLongDeal := true
-        else if zero_short and shortDealsEnabled
-            startShortDeal := true
-
-
-
-
-//#region 🔌 SIGNAL
-// ▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒▒
-
-import jason5480/tts_convention/7 as conv
-
-// LOGIC ===============================================================================================================
-// Calculate the start, end conditions according to the user-defined logic
-dealConditions = conv.DealConditions.new(
-  // Start deals should happen when the main rsi logic applies and the external condition is met
-  startLongDeal = startLongDeal,
-  startShortDeal = startShortDeal,
-  // End deals should happen when the main logic applies either the external condition is not met
-  endLongDeal = false,
-  endShortDeal = false)
-
-// Use this signal in scripts like "Template Trailing Strategy (Backtester)" and "Signal Composer" that can utilize its value
-// Emit the current signal value according to the TTS framework convention
-plot(series = conv.getSignal(dealConditions), title = '🔌Signal to TTS', color = #808000, editable = false, display = display.data_window + display.status_line, precision = 0)
-
-// PLOT ================================================================================================================
-plotshape(plotStrategyEntry ? dealConditions.startLongDeal : false, title = 'Start Long', style = shape.triangleup, location = location.belowbar, color = bullcol, size = size.tiny, text="Long", textcolor = chart.fg_color, display = display.all - display.status_line, force_overlay = true)
-// plotshape(series = dealConditions.endLongDeal, title = 'End Long', style = shape.square, location = location.belowbar, color = color.new(#C790F1, 70), offset = 1, size = size.tiny, display = display.all - display.status_line)
-plotshape(plotStrategyEntry ? dealConditions.startShortDeal : false, title = 'Start Short', style = shape.triangledown, location = location.abovebar, color = bearcol, size = size.tiny, text="Short", textcolor = chart.fg_color, display = display.all - display.status_line, force_overlay = true)
-// plotshape(series = dealConditions.endShortDeal, title = 'End Short', style = shape.square, location = location.abovebar, color = color.new(#C790F1, 70), offset = 1, size = size.tiny, display = display.all - display.status_line)
-
-//#endregion ===========================================================================================================
+bgcolor((time <= shiftedTime2 and (time + timeframe.multiplier * 60000) > shiftedTime2) or (time == shiftedTime2)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background", force_overlay=true)
+bgcolor((time <= shiftedTime1 and (time + timeframe.multiplier * 60000) > shiftedTime1) or (time == shiftedTime1)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background", force_overlay=true)
+//bgcolor((time <= shiftedTime22 and (time + timeframe.multiplier * 60000) > shiftedTime22) or (time == shiftedTime22)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background")
+//bgcolor((time <= shiftedTime11 and (time + timeframe.multiplier * 60000) > shiftedTime11) or (time == shiftedTime11)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background")
