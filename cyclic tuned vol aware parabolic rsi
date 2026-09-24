@@ -5,148 +5,6 @@
 indicator("Cyclic tuned Parabolic RSI", overlay = false)
 domcycle =input.int(20, minval=10, title="Dominant Cycle Length #1")
 
-// Inputs
-Price = input(hl2, title='Price')
-Fundamental = input(20, title='Fundamental')
-Bandwidth = input(0.1, title='Bandwidth')
-
-// Function implementation
-compute_fourier_series_strategy(price, fundamental, bandwidth) =>
-    // Initialize variables
-    var float g1 = 0.0
-    var float s1 = 0.0
-    var float l1 = 0.0
-    var float bp1 = 0.0
-    var float q1 = 0.0
-    var float p1 = 0.0
-    var float g2 = 0.0
-    var float s2 = 0.0
-    var float l2 = 0.0
-    var float bp2 = 0.0
-    var float q2 = 0.0
-    var float p2 = 0.0
-    var float g3 = 0.0
-    var float s3 = 0.0
-    var float l3 = 0.0
-    var float bp3 = 0.0
-    var float q3 = 0.0
-    var float p3 = 0.0
-    var float wave = 0.0
-    var float roc = 0.0
-    var float trigger = 0.0
-    var float pi = 2 * math.asin(1)
-
-    // Compute filter coefficients
-    l1 := math.cos(2 * pi / fundamental)
-    g1 := math.cos(bandwidth * 2 * pi / fundamental)
-    s1 := 1 / g1 - math.sqrt(1 / (g1 * g1) - 1)
-    l2 := math.cos(2 * pi / (fundamental / 2))
-    g2 := math.cos(bandwidth * 2 * pi / (fundamental / 2))
-    s2 := 1 / g2 - math.sqrt(1 / (g2 * g2) - 1)
-    l3 := math.cos(2 * pi / (fundamental / 3))
-    g3 := math.cos(bandwidth * 2 * pi / (fundamental / 3))
-    s3 := 1 / g3 - math.sqrt(1 / (g3 * g3) - 1)
-
-    // Fundamental Band-Pass
-    bp1 := .5 * (1 - s1) * (price - nz(price[2])) + l1 * (1 + s1) * nz(bp1[1]) - s1 * nz(bp1[2])
-    if bar_index <= 3
-        bp1 := 0
-        bp1
-
-    // Fundamental Quadrature
-    q1 := fundamental / 2 * pi * (bp1 - nz(bp1[1]))
-    if bar_index <= 4
-        q1 := 0
-        q1
-
-    // Second Harmonic Band-Pass
-    bp2 := .5 * (1 - s2) * (price - nz(price[2])) + l2 * (1 + s2) * nz(bp2[1]) - s2 * nz(bp2[2])
-    if bar_index <= 3
-        bp2 := 0
-        bp2
-
-    // Second Harmonic Quadrature
-    q2 := fundamental / 2 * pi * (bp2 - nz(bp2[1]))
-    if bar_index <= 4
-        q2 := 0
-        q2
-
-    // Third Harmonic Band-Pass
-    bp3 := .5 * (1 - s3) * (price - nz(price[2])) + l3 * (1 + s3) * nz(bp3[1]) - s3 * nz(bp3[2])
-    if bar_index <= 3
-        bp3 := 0
-        bp3
-
-    // Third Harmonic Quadrature
-    q3 := fundamental / 2 * pi * (bp3 - nz(bp3[1]))
-    if bar_index <= 4
-        q3 := 0
-        q3
-
-    // Sum power of each harmonic
-    p1 := 0
-    p2 := 0
-    p3 := 0
-    for count = 0 to fundamental - 1 by 1
-        p1 += nz(bp1[count]) * nz(bp1[count]) + nz(q1[count]) * nz(q1[count])
-        p2 += nz(bp2[count]) * nz(bp2[count]) + nz(q2[count]) * nz(q2[count])
-        p3 += nz(bp3[count]) * nz(bp3[count]) + nz(q3[count]) * nz(q3[count])
-        p3
-
-    // Add harmonics together
-    if p1 != 0
-        wave := bp1 + math.sqrt(p2 / p1) * bp2 + math.sqrt(p3 / p1) * bp3
-        wave
-
-    // Calculate ROC and trigger
-    roc := fundamental / 4 * pi * (wave - nz(wave[2]))
-    trigger := 0.05 + 0.9 * nz(roc[1])
-
-    [roc, trigger]
-
-// Function definition
-[roc, trigger] = compute_fourier_series_strategy(Price, Fundamental, Bandwidth)
-
-// Alerts
-alertcondition(ta.crossover(roc, trigger), title='Buy Signal', message='Ehlers Fourier Series Buy Signal')
-alertcondition(ta.crossunder(roc, trigger), title='Sell Signal', message='Ehlers Fourier Series Sell Signal')
-
-normalize(value, min, max) =>
-    100 * (value - min) / (max - min)
-
-
-// Plots
-plot1 = plot(normalize(roc,ta.lowest(roc, 20),ta.highest(roc, 20)), 'ROC', color=color.new(#c7c5b7, 0), linewidth=1)
-plot2 = plot(normalize(trigger,ta.lowest(trigger, 20),ta.highest(trigger, 20)), 'Trigger', color=color.new(#757575, 0), linewidth=1)
-//fill(plot1, plot2, color=roc > trigger ? color.yellow : color.fuchsia)
-
-// Labels
-//l = ta.crossunder(roc, trigger) ? label.new(bar_index, roc[1], 'SELL', color=color.red, textcolor=color.white, style=label.style_label_down, yloc=yloc.price, size=size.small) : ta.crossover(roc, trigger) ? label.new(bar_index, roc[1], 'BUY', color=color.green, textcolor=color.white, style=label.style_label_up, yloc=yloc.price, size=size.small) : na
-
-
-plotshape(
-     ta.crossover(roc, trigger) ,
-     title="Cycle Buy Near",
-     style=shape.labelup,
-     location=location.belowbar,
-     text="B",
-     color=color.blue,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=0,
-     force_overlay=true)
-
-plotshape(
-     ta.crossunder(roc, trigger) ,
-     title="Cycle Sell Near",
-     style=shape.labeldown,
-     location=location.abovebar,
-     text="S",
-     color=color.purple,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=0,
-     force_overlay=true)
 
 src = close
 
@@ -361,13 +219,14 @@ plot(avdomcycle > 0 ? avdomcycle : na , "Mean Dominant Cycle Length", display=di
 // } Plots and alert data stream      
 
 //... show final label
-if barstate.islast
+// if barstate.islast
     //log.info("--Dominant median cycle length: " + str.tostring(domcycle))
-    if (avdomcycle>0)
-        label.new(chart.point.now(0), "Mean: "+str.tostring(avdomcycle), color = color.teal, textcolor = color.white, style = label.style_label_left, size=size.small)
+//    if (avdomcycle>0)
+//        label.new(chart.point.now(0), "Mean: "+str.tostring(avdomcycle), color = color.teal, textcolor = color.white, style = label.style_label_left, size=size.small)
 // ===================================================================
 // --- CRSI #1 (original)
 // ===================================================================
+
 
 
 crsi = 0.0
@@ -375,29 +234,42 @@ cyclelen = domcycle / 2
 vibration = 10
 leveling = 10.0
 cyclicmemory = domcycle * 2
-
-
+dx_crsi = 0.0
+dy_crsi = 0.0
 torque = 2.0 / (vibration + 1)
 phasingLag = (vibration - 1) / 2.0
 
-up = ta.rma(math.max(ta.change(src), 0), cyclelen)
-down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
-rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
-crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
-cond1 =  ta.crossunder(roc, trigger) 
-cond2 = ta.crossover(roc, trigger)
-cond3 = roc > 95 and trigger > 95
-cond4 = roc < 5 and trigger < 5
-[db,ub] = calc_bands( (cond1 and cond3) or (cond2 and cond4),crsi,cyclicmemory,leveling)
-[db1,ub1] = calc_bands((cond1 and cond3) or (cond2 and cond4) ,crsi,cyclicmemory/2,leveling)
-[db2,ub2] = calc_bands((cond1 and cond3) or (cond2 and cond4),crsi,cyclicmemory*2,leveling)
+//up = ta.rma(math.max(ta.change(src), 0), cyclelen)
+//down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
+//rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
 
+stochK = 100 * (src - ta.lowest(src, cyclelen)) / (ta.highest(src, cyclelen) - ta.lowest(src, cyclelen))
+smoothK = ta.sma(stochK, 3)
+stochD = ta.sma(stochK, 3)
+crsi := torque * (2 * stochD - stochD[phasingLag]) + (1 - torque) * nz(crsi[1])
+
+
+//crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
+
+[db,ub] = calc_bands( 1==1,crsi,cyclicmemory,leveling)
 lowband = plot(db, "LowBand #1", color=color.aqua)
 highband = plot(ub, "HighBand #1", color=color.aqua)
 //fill(h1, h2, color=color.rgb(178, 181, 190, 86))
 fill(lowband, highband, color=color.rgb(120, 123, 134, 92))
 plot(crsi, "CRSI #1", color=color.rgb(251, 248, 64))
 
+
+dx_stochK = 100 * (src - ta.lowest(src, cyclelen*2)) / (ta.highest(src, cyclelen*2) - ta.lowest(src, cyclelen*2))
+dx_smoothK = ta.sma(dx_stochK, 3)
+dx_stochD = ta.sma(dx_stochK, 3)
+dx_crsi := torque * (2 * dx_stochD - dx_stochD[phasingLag]) + (1 - torque) * nz(dx_crsi[1])
+[dbx,ubx] = calc_bands( 1==1,dx_crsi,cyclicmemory*2,leveling)
+
+dy_stochK = 100 * (src - ta.lowest(src, cyclelen/2)) / (ta.highest(src, cyclelen/2) - ta.lowest(src, cyclelen/2))
+dy_smoothK = ta.sma(dy_stochK, 3)
+dy_stochD = ta.sma(dy_stochK, 3)
+dy_crsi := torque * (2 * dy_stochD - dy_stochD[phasingLag]) + (1 - torque) * nz(dy_crsi[1])
+[dby,uby] = calc_bands( 1==1,dy_crsi,cyclicmemory/2,leveling)
 
 // Detect break above HighBand
 hbBreak = ta.crossunder(crsi, ub)
@@ -735,78 +607,11 @@ if not na(pHigh)
          lastPriceHigh > prevPriceHigh and
          lastCrsiHigh  < prevCrsiHigh
 
-//----------------------------------------------------
-// DIVERGENCE STATE
-//----------------------------------------------------
 
-
-
-var int divState = 0
-//  1 = bullish divergence active
-// -1 = bearish divergence active
-//  0 = none
-
-crsiDiffub = ub - crsi
-crsiDifflb = crsi - db
-
-crsiDiffub1 = ub1 - crsi
-crsiDifflb1 = crsi - db1
-
-crsiDiffub2 = ub2 - crsi
-crsiDifflb2 = crsi - db2
-
-
-// Enter state on divergence
-if bullDiv
-    divState := 1
-
-if bearDiv
-    divState := -1
-
-// Clear state only when CRSI moves > 5 away
-if divState != 0 and ( ((  crsiDiffub > crsiaway) or (  crsiDifflb > crsiaway) ) or  ((  crsiDiffub1 > crsiaway) or (  crsiDifflb1 > crsiaway) )
-    or  ((  crsiDiffub2 > crsiaway) or (  crsiDifflb2 > crsiaway) ) )
-    divState := 0
-
-bullDivActive = divState == 1
-bearDivActive = divState == -1
 
 //----------------------------------------------------
 // Plot signals on pivot confirmation bar
 //----------------------------------------------------
-
-// ----- Chart markers -----
-plotshape(
-     (divState != 0 and crsiDifflb <= crsiaway )or (bullDiv),
-     title="Bull Div Chart",
-     style=shape.labelup,
-     location=location.belowbar,
-     text="BuD",
-     color=color.lime,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
-
-plotshape(
-     (divState != 0 and crsiDiffub <= crsiaway) or bearDiv,
-     title="Bear Div Chart",
-     style=shape.labeldown,
-     location=location.abovebar,
-     text="BeD",
-     color=color.red,
-     textcolor=color.white,
-     size=size.tiny,
-     offset=-divRight,
-     force_overlay=true)
-
-
-
-// Optional: visualize active divergence regime
-bgcolor(
-     bullDivActive ? color.new(color.green, 92) :
-     bearDivActive ? color.new(color.red, 92) :
-     na)
 
 
 // ==========================================
@@ -876,10 +681,10 @@ float cexpected_future_vol = torque * (2 * expected_future_vol - expected_future
 plot(cexpected_future_vol*30, "Predicted Heston Vol", color=color.rgb(122, 122, 122), linewidth=plotwill?2:0)
 
 // 4. Upper and Lower Expectation Bands
-[cup,cdn]=calc_bands(cond1 and cond3 or cond2 and cond4 ,cexpected_future_vol,cyclicmemory,10)
+[cup,cdn]=calc_bands(1==1 ,cexpected_future_vol,cyclicmemory,10)
 p_up = plot(cup*30, "Upper Vol Band (+1 StdDev)", color=color.new(color.red, plotwill?0:99))
 p_dn = plot(cdn*30, "Lower Vol Band (-1 StdDev)", color=color.new(color.green, plotwill?0:99))
-fill(p_up, p_dn, color=color.new(color.fuchsia, plotwill?0:99), title="Forecast Volatility Spread")
+fill(p_up, p_dn, color=color.new(color.fuchsia, plotwill?25:99), title="Forecast Volatility Spread")
 
 // ==========================================
 // Information Dashboard Box
@@ -904,62 +709,12 @@ if barstate.islast
     //table.cell(infoBox, 0, 4,  string(math.sqrt(math.max(expected_future_var, 0))), text_color=color.gray, text_size=size.small)
 
 
-multp = input.float(2.0, "Multiplier", minval=0.1)
-
-
-var float sum = 0.0
-var float sumSq = 0.0
-var int count = 0
-
-if (cond1 and cond3) or (cond2 and cond4)
-    sum := 0.0
-    sumSq := 0.0
-    count := 0
-
-sum += crsi
-sumSq += crsi * crsi
-count += 1
-
-if count > domcycle/2
-    sum -= crsi[domcycle/2]
-    sumSq -= crsi[domcycle/2] * crsi[domcycle/2]
-    count -= 1
-
-basis = count > 0 ? sum / count : na
-variance = count > 1 ? (sumSq - sum * sum / count) / count : 0.0
-dev = math.sqrt(math.max(variance, 0.0))
-
-upper = basis + 1.272  * dev
-lower = basis - 1.272 * dev
-upper1 = basis + 1.414 * dev
-lower1 = basis - 1.414 * dev
-upper2 = basis + 1.618 * dev
-lower2 = basis - 1.618 * dev
-upper3 = basis + 2.000 * dev
-lower3 = basis - 2 * dev
-
-
-plot(basis, "Basis", color=color.rgb(65, 141, 255))
-plot(upper, "Upper", color=color.gray)
-plot(lower, "Lower", color=color.gray)
-plot(upper1, "Upper", color=color.gray)
-plot(lower1, "Lower", color=color.gray)
-plot(upper2, "Upper", color=color.gray)
-plot(lower2, "Lower", color=color.gray)
-plot(upper3, "Upper", color=color.gray)
-plot(lower3, "Lower", color=color.gray)
-// © upslidedown
-// One of the first indicators I ever used was %R, and I realized that with crypto strategies a period of 112 
-// provided very interesting results in trend following strategies. This indicator intends to mix standard %R
-// with the longer period %R and show key areas of interest. Using classic overbought/oversold logic, the 
-// indicator highlights a key trend and a subsequent break in that trend. When this condition is detected it 
-// will print a reversal arrow down. This is one of my odder ideas that appears to have some merit, so I'm 
-// publicly publishing for the community to find. If you find this useful please reach out and let me know.
 
 
 //@version=6
 import HeWhoMustNotBeNamed/ta/1
 
+import TradingView/ta/10 as tatwo
 const string version = "v2.3"
 const string groupSettings = "Settings "+ version
 
@@ -1068,11 +823,11 @@ bool cross_bull = ta.crossunder(l_percentR, s_percentR)
 
 
 // Print lines for stuff
-top = hline(mode == mode1 ? 0 : na, 'Top', bearcol_medium, linestyle=hline.style_solid)
-band1 = hline(mode == mode1 ? -threshold : na, 'Top Threshold', bearcol_medium, linestyle=hline.style_solid)
-middle = hline(mode == mode1 ? -50 : na, 'Middle Line', color.new(chart.fg_color, 80), linestyle=hline.style_solid)
-band0 = hline(mode == mode1 ? -100+threshold : na, 'Bottom Threshold', bullcol_medium, linestyle=hline.style_solid)
-bottom = hline(mode == mode1 ? -100 : na, 'Bottom', bullcol_medium, linestyle=hline.style_solid)
+//top = hline(mode == mode1 ? 0 : na, 'Top', bearcol_medium, linestyle=hline.style_solid)
+//band1 = hline(mode == mode1 ? -threshold : na, 'Top Threshold', bearcol_medium, linestyle=hline.style_solid)
+//middle = hline(mode == mode1 ? -50 : na, 'Middle Line', color.new(chart.fg_color, 80), linestyle=hline.style_solid)
+//band0 = hline(mode == mode1 ? -100+threshold : na, 'Bottom Threshold', bullcol_medium, linestyle=hline.style_solid)
+//bottom = hline(mode == mode1 ? -100 : na, 'Bottom', bullcol_medium, linestyle=hline.style_solid)
 
 
 // plot %R
@@ -1118,6 +873,63 @@ var array<box> printed_boxes = array.new_box()
 //plotshape(os_reversal ? bull_signal_loc : na, title="Oversold Trend Reversal ▲", style=shape.triangleup, location=getlocation(mode, 'bottom'), color=bullcol, text='', textcolor=invisible, size=size.tiny)
 plotshape(force_overlay and ob_reversal and not na(ob_box_top) ? ob_box_top : na, title="Overbought Break Candle ▼", style=shape.triangledown, location=location.absolute, color=bearcol, text='', textcolor=invisible, size=size.tiny, force_overlay=true)
 plotshape(force_overlay and os_reversal and not na(os_box_bottom) ? os_box_bottom : na, title="Oversold Break Candle ▲", style=shape.triangleup, location=location.absolute, color=bullcol, text='', textcolor=invisible, size=size.tiny, force_overlay=true)
+
+
+// ----- Chart markers -----
+plotshape(
+     //(divState != 0 and crsiDifflb <= crsiaway ),//or (bullDiv),
+     crsi < db  and not na(ob_box_top),
+     title="Bull Div Chart",
+     style=shape.labelup,
+     location=location.belowbar,
+     text="BuD",
+     color=color.rgb(16, 141, 80),
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+plotshape(
+     //(divState != 0 and crsiDiffub <= crsiaway) ,//or bearDiv,
+     crsi > ub    and not na(os_box_bottom),
+     title="Bear Div Chart",
+     style=shape.labeldown,
+     location=location.abovebar,
+     text="BeD",
+     color=color.rgb(155, 28, 28),
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+// ----- Chart markers -----
+plotshape(
+     //(divState != 0 and crsiDifflb <= crsiaway ),//or (bullDiv),
+     crsi < db  and dx_crsi < dbx and dy_crsi < dby   and not na(ob_box_top),
+     title="Bull Div Chart",
+     style=shape.labelup,
+     location=location.belowbar,
+     text="BuD",
+     color=color.lime,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+plotshape(
+     //(divState != 0 and crsiDiffub <= crsiaway) ,//or bearDiv,
+     crsi > ub and dx_crsi > ubx and   dy_crsi > uby    and not na(os_box_bottom),
+     title="Bear Div Chart",
+     style=shape.labeldown,
+     location=location.abovebar,
+     text="BeD",
+     color=color.red,
+     textcolor=color.white,
+     size=size.tiny,
+     offset=-divRight,
+     force_overlay=true)
+
+
 //plotshape(overbought ? bear_signal_loc : na, title="Overbought Trend Warning ■", style=shape.square, location=getlocation(mode, 'top'), color=bearcol_medium, text='', textcolor=invisible, size=size.tiny)
 //plotshape(oversold ? bull_signal_loc : na, title="Oversold Trend Warning ■", style=shape.square, location=getlocation(mode, 'bottom'), color=bullcol_medium, text='', textcolor=invisible, size=size.tiny)
 
@@ -1187,12 +999,14 @@ tablePosition = input.string("top_right", title="Table Position", options=["top_
 isHigh = input.bool(false,"pick high?")
 // --- Find Selected Candle Values ---
 var float selectedHighLow = na
+var float selectedOpen = na
 var int firstbar = na
 // Check if the current bar's time matches the selected time
 // We look for the bar where the time matches or falls within the bar duration
 if (time <= selectedTime and (time + timeframe.multiplier * 60000) > selectedTime) or (time == selectedTime)
     if  na(firstbar)
         firstbar := bar_index
+        selectedOpen := open
     if isHigh
         selectedHighLow := high
     else
@@ -1229,6 +1043,8 @@ pos = tablePosition == "top_right" ? position.top_right :
       tablePosition == "top_left" ? position.top_left :
       tablePosition == "bottom_right" ? position.bottom_right : position.bottom_left
 
+
+ 
 // Initialize the table once
 if barstate.islast
     rootTable := table.new(position=pos, columns=2, rows=7, bgcolor=color.new(color.black, 20), border_color=color.gray, border_width=1)
@@ -1239,8 +1055,8 @@ if barstate.islast
     
     if not na(selectedHighLow)
         // Row 1: Square Root of Square Root
-        table.cell(rootTable, 0, 1, "√√(High)", bgcolor=color.gray, text_color=color.white, text_size=size.small)
-        table.cell(rootTable, 1, 1, str.tostring(doubleSqrt, "#.#####"), bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 1, "Mean", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 1, str.tostring(avdomcycle), bgcolor=color.maroon, text_color=color.white, text_size=size.small)
         
         // Row 2: Cube Root of Cube Root
         table.cell(rootTable, 0, 2, "³√³√(High)", bgcolor=color.gray, text_color=color.white, text_size=size.small)
@@ -1258,6 +1074,9 @@ if barstate.islast
     else
         table.cell(rootTable, 0, 1, "Status", bgcolor=color.gray, text_color=color.white, text_size=size.small)
         table.cell(rootTable, 1, 1, "Click a candle in settings", bgcolor=color.maroon, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 1, "Mean", bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 1, str.tostring(avdomcycle), bgcolor=color.maroon, text_color=color.white, text_size=size.small)
+
 
 // --- Visual Marker ---
 // Plot a small dot above the selected candle to confirm selection
@@ -1266,5 +1085,57 @@ bgcolor((time <= selectedTime and (time + timeframe.multiplier * 60000) > select
 
 bgcolor((time <= shiftedTime2 and (time + timeframe.multiplier * 60000) > shiftedTime2) or (time == shiftedTime2)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background", force_overlay=true)
 bgcolor((time <= shiftedTime1 and (time + timeframe.multiplier * 60000) > shiftedTime1) or (time == shiftedTime1)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background", force_overlay=true)
-//bgcolor((time <= shiftedTime22 and (time + timeframe.multiplier * 60000) > shiftedTime22) or (time == shiftedTime22)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background")
-//bgcolor((time <= shiftedTime11 and (time + timeframe.multiplier * 60000) > shiftedTime11) or (time == shiftedTime11)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background")
+bgcolor((time <= shiftedTime22 and (time + timeframe.multiplier * 60000) > shiftedTime22) or (time == shiftedTime22)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background")
+bgcolor((time <= shiftedTime11 and (time + timeframe.multiplier * 60000) > shiftedTime11) or (time == shiftedTime11)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background")
+
+if  (time == selectedTime) 
+    priceSqrt = math.pow(selectedOpen, 0.5)
+    midhigherClose = math.pow(priceSqrt+(0.618),2)
+    midlowerClose = math.pow(priceSqrt-(0.618),2)
+    weakhigherClose = math.pow(priceSqrt+(0.382),2)
+    weaklowerClose = math.pow(priceSqrt-(0.382),2)
+    higherClose = math.pow(priceSqrt+(0.618+0.382),2)
+    lowerClose = math.pow(priceSqrt-(0.618+0.382),2)
+        
+
+    line.new(firstbar, higherClose, firstbar + 1, higherClose, extend=extend.right, color=color.green,force_overlay=true)
+    line.new(firstbar, lowerClose, firstbar + 1, lowerClose, extend=extend.right, color=color.red,force_overlay=true)
+
+
+    line.new(firstbar, midhigherClose, firstbar + 1, midhigherClose, extend=extend.right, color=color.green,force_overlay=true)
+    line.new(firstbar, midlowerClose, firstbar + 1, midlowerClose, extend=extend.right, color=color.red,force_overlay=true)
+
+
+    line.new(firstbar, weakhigherClose, firstbar + 1, weakhigherClose, extend=extend.right, color=color.green,force_overlay=true)
+    line.new(firstbar, weaklowerClose, firstbar + 1, weaklowerClose, extend=extend.right, color=color.red,force_overlay=true)
+
+
+
+ma = ta.sma(src, domcycle)
+cci = ta.cci(src,domcycle)
+ccci = 0.0
+ccci := torque * (2.0 * cci - cci[phasingLag]) + (1.0 - torque) * nz(ccci[1])
+//plot(ccci, "CCI", color=#2962FF)
+[cdb, cub] = calc_bands(1==1,ccci,domcycle/2,10)
+
+//lot(cdb, "CCI db", color=color.lime)
+//plot(cub, "CCI ub", color=color.lime)
+
+
+dm = tatwo.dm(domcycle)
+cdm = 0.0
+cdm := torque * (2.0 * dm - dm[phasingLag]) + (1.0 - torque) * nz(cdm[1])
+[ddb, dub] = calc_bands(1==1,cdm,domcycle/2,10)
+//plot(cdm, "DM", color=#ff6d29)
+//plot(ddb, "ddb", color=color.rgb(230, 0, 219))
+//plot(dub, "dub", color=color.rgb(230, 0, 219))
+
+
+bgcolor( cdm > dub ? color.new(#ff0000, 90) : na, title="signal")
+bgcolor( ccci > cub ? color.new(#ff0000, 90) : na, title="signal")
+bgcolor( crsi > ub ? color.new(#ff0000, 90) : na, title="signal")
+
+bgcolor( cdm < ddb ? color.new(#00ff00, 90) : na, title="signal")
+bgcolor( ccci < cdb ? color.new(#00ff00, 90) : na, title="signal")
+bgcolor( crsi < db ? color.new(#00ff00, 90) : na, title="signal")
+
