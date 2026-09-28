@@ -239,17 +239,17 @@ dy_crsi = 0.0
 torque = 2.0 / (vibration + 1)
 phasingLag = (vibration - 1) / 2.0
 
-//up = ta.rma(math.max(ta.change(src), 0), cyclelen)
-//down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
-//rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
+up = ta.rma(math.max(ta.change(src), 0), cyclelen)
+down = ta.rma(-math.min(ta.change(src), 0), cyclelen)
+rsi = down == 0 ? 100 : up == 0 ? 0 : 100 - 100 / (1 + up / down)
 
-stochK = 100 * (src - ta.lowest(src, cyclelen)) / (ta.highest(src, cyclelen) - ta.lowest(src, cyclelen))
-smoothK = ta.sma(stochK, 3)
-stochD = ta.sma(stochK, 3)
-crsi := torque * (2 * stochD - stochD[phasingLag]) + (1 - torque) * nz(crsi[1])
+//stochK = 100 * (src - ta.lowest(src, cyclelen)) / (ta.highest(src, cyclelen) - ta.lowest(src, cyclelen))
+//smoothK = ta.sma(stochK, 3)
+//stochD = ta.sma(stochK, 3)
+//crsi := torque * (2 * stochD - stochD[phasingLag]) + (1 - torque) * nz(crsi[1])
 
 
-//crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
+crsi := torque * (2 * rsi - rsi[phasingLag]) + (1 - torque) * nz(crsi[1])
 
 [db,ub] = calc_bands( 1==1,crsi,cyclicmemory,leveling)
 lowband = plot(db, "LowBand #1", color=color.aqua)
@@ -1047,7 +1047,7 @@ pos = tablePosition == "top_right" ? position.top_right :
  
 // Initialize the table once
 if barstate.islast
-    rootTable := table.new(position=pos, columns=2, rows=7, bgcolor=color.new(color.black, 20), border_color=color.gray, border_width=1)
+    rootTable := table.new(position=pos, columns=2, rows=8, bgcolor=color.new(color.black, 20), border_color=color.gray, border_width=1)
     
     // Header Style
     table.cell(rootTable, 0, 0, "Metric", bgcolor=color.blue, text_color=color.white, text_size=size.small)
@@ -1070,6 +1070,8 @@ if barstate.islast
         table.cell(rootTable, 1, 5, shiftedTimeFormatted1, bgcolor=color.gray, text_color=color.white, text_size=size.small)
         table.cell(rootTable, 0, 6, "Cube Time", bgcolor=color.gray, text_color=color.white, text_size=size.small)
         table.cell(rootTable, 1, 6, shiftedTimeFormatted22, bgcolor=color.gray, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 0, 7, "for Gold", bgcolor=color.blue, text_color=color.white, text_size=size.small)
+        table.cell(rootTable, 1, 7, "6 * 0.618", bgcolor=color.blue, text_color=color.white, text_size=size.small)
    
     else
         table.cell(rootTable, 0, 1, "Status", bgcolor=color.gray, text_color=color.white, text_size=size.small)
@@ -1088,8 +1090,8 @@ bgcolor((time <= shiftedTime1 and (time + timeframe.multiplier * 60000) > shifte
 bgcolor((time <= shiftedTime22 and (time + timeframe.multiplier * 60000) > shiftedTime22) or (time == shiftedTime22)  ? color.new(color.yellow, 60) : na, title="Shifted Candle Background")
 bgcolor((time <= shiftedTime11 and (time + timeframe.multiplier * 60000) > shiftedTime11) or (time == shiftedTime11)  ? color.new(#b07e27, 60) : na, title="Shifted Candle Background")
 
-if  (time == selectedTime) 
-    priceSqrt = math.pow(selectedOpen, 0.5)
+if  ( hour(time, "Asia/Riyadh") == 3 and minute(time, "Asia/Riyadh")==0) 
+    priceSqrt = math.pow(open, 0.5)
     midhigherClose = math.pow(priceSqrt+(0.618),2)
     midlowerClose = math.pow(priceSqrt-(0.618),2)
     weakhigherClose = math.pow(priceSqrt+(0.382),2)
@@ -1097,17 +1099,20 @@ if  (time == selectedTime)
     higherClose = math.pow(priceSqrt+(0.618+0.382),2)
     lowerClose = math.pow(priceSqrt-(0.618+0.382),2)
         
-
-    line.new(firstbar, higherClose, firstbar + 1, higherClose, extend=extend.right, color=color.green,force_overlay=true)
-    line.new(firstbar, lowerClose, firstbar + 1, lowerClose, extend=extend.right, color=color.red,force_overlay=true)
-
-
-    line.new(firstbar, midhigherClose, firstbar + 1, midhigherClose, extend=extend.right, color=color.green,force_overlay=true)
-    line.new(firstbar, midlowerClose, firstbar + 1, midlowerClose, extend=extend.right, color=color.red,force_overlay=true)
+  
+    line.new(bar_index, higherClose, bar_index + 3, higherClose, extend=extend.none, color=color.green,force_overlay=true)
+    line.new(bar_index, lowerClose, bar_index + 3, lowerClose, extend=extend.none, color=color.red,force_overlay=true)
 
 
-    line.new(firstbar, weakhigherClose, firstbar + 1, weakhigherClose, extend=extend.right, color=color.green,force_overlay=true)
-    line.new(firstbar, weaklowerClose, firstbar + 1, weaklowerClose, extend=extend.right, color=color.red,force_overlay=true)
+    line.new(bar_index, midhigherClose, bar_index + 3, midhigherClose, extend=extend.none, color=color.green,force_overlay=true)
+    line.new(bar_index, midlowerClose, bar_index + 3, midlowerClose, extend=extend.none, color=color.red,force_overlay=true)
+
+
+    line.new(bar_index, weakhigherClose, bar_index + 3, weakhigherClose, color=color.green,force_overlay=true)
+    line.new(bar_index, weaklowerClose, bar_index + 3, weaklowerClose, color=color.red,force_overlay=true)
+
+
+
 
 
 
