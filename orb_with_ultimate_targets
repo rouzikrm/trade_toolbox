@@ -4,7 +4,7 @@
 //@version=6
 indicator("Worldwide Sessions and Opening Range Breakout with ultimate targets", shorttitle = "ORB Sess", overlay = true)
 
-string orb_tf = input("15", title = "ORB Timeframe", tooltip = "The timeframe to calculate the opening range. This is in TV format (eg. 30s, 15, 2h).")
+string orb_tf = input("30", title = "ORB Timeframe", tooltip = "The timeframe to calculate the opening range. This is in TV format (eg. 30s, 15, 2h).")
 bool next_session_enabled = input(true, title = "Mark Next Session Start and End", tooltip = "Indicates when the next session will begin and the current session ends.")
 bool london_enabled = input(true, title = "London Session Enabled")
 bool asia_enabled = input(true, title = "Asia Session Enabled")
