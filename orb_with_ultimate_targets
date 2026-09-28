@@ -1,0 +1,280 @@
+// This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © tyler-johnson
+
+//@version=6
+indicator("Worldwide Sessions and Opening Range Breakout with ultimate targets", shorttitle = "ORB Sess", overlay = true)
+
+string orb_tf = input("15", title = "ORB Timeframe", tooltip = "The timeframe to calculate the opening range. This is in TV format (eg. 30s, 15, 2h).")
+bool next_session_enabled = input(true, title = "Mark Next Session Start and End", tooltip = "Indicates when the next session will begin and the current session ends.")
+bool london_enabled = input(true, title = "London Session Enabled")
+bool asia_enabled = input(true, title = "Asia Session Enabled")
+bool newyork_enabled = input(true, title = "New York Session Enabled")
+
+int orb_width_sec = timeframe.in_seconds(orb_tf)
+int tf_sec = timeframe.in_seconds()
+
+f_gcd(int a, int b) =>
+    // Ensure numbers are positive, as GCD is defined for positive integers.
+    int ra = math.abs(a)
+    int rb = math.abs(b)
+    
+    // The Euclidean algorithm loop
+    while rb != 0
+        temp = rb
+        rb := ra % rb
+        ra := temp
+
+    ra // The result is the final value of 'a'
+
+f_ranges_overlap(float start1, float end1, float start2, float end2) =>
+    // Normalize ranges to ensure the start is always less than or equal to the end.
+    r1_start = math.min(start1, end1)
+    r1_end   = math.max(start1, end1)
+    r2_start = math.min(start2, end2)
+    r2_end   = math.max(start2, end2)
+    
+    // The ranges overlap if the first range's start is before the second's end
+    // AND the second range's start is before the first's end.
+    r1_start < r2_end and r2_start < r1_end
+
+f_slice_array_by_time(array<float> input_array, int array_start_time_ms, int sub_timeframe_duration_sec, int slice_start_time_ms, int slice_duration_sec) =>
+    // --- CONVERSION STEP ---
+    // Convert durations from seconds to milliseconds to match the start time units.
+    sub_timeframe_duration_ms = sub_timeframe_duration_sec * 1000
+    slice_duration_ms = slice_duration_sec * 1000
+
+    // Get the size of the input array
+    arr_size = array.size(input_array)
+    
+    // If the input array is empty or sub_timeframe is zero, we can't proceed.
+    if arr_size == 0 or sub_timeframe_duration_ms <= 0
+        array.new_float(0)
+    else
+        // 1. Calculate the end times for the source array and the desired slice (all in milliseconds)
+        array_end_time_ms = array_start_time_ms + (arr_size * sub_timeframe_duration_ms)
+        slice_end_time_ms = slice_start_time_ms + slice_duration_ms
+
+        // 2. Determine the actual start and end times of the overlapping period
+        intersection_start = math.max(array_start_time_ms, slice_start_time_ms)
+        intersection_end = math.min(array_end_time_ms, slice_end_time_ms)
+
+        // 3. If there is no overlap, return an empty array
+        if intersection_start >= intersection_end
+            array.new_float(0)
+        else
+            // 4. Calculate the starting and ending indices for the slice
+            start_offset = intersection_start - array_start_time_ms
+            start_index = int(math.floor(start_offset / sub_timeframe_duration_ms))
+
+            end_offset = intersection_end - array_start_time_ms
+            // Use ceil to include the partial interval at the end, as slicing is exclusive of the end index.
+            end_index = int(math.ceil(end_offset / sub_timeframe_duration_ms))
+
+            // 5. Ensure indices are within the bounds of the array
+            start_index := math.max(0, start_index)
+            end_index := math.min(arr_size, end_index)
+
+            // 6. Slice the array and return the result
+            array.slice(input_array, start_index, end_index)
+
+f_get_range_in_window(int start_time, int end_time) =>
+    var float hi = na
+    var float lo = na
+    int orb_end = start_time + orb_width_sec * 1000
+
+    if f_ranges_overlap(time, time_close, start_time, orb_end)
+        // find the common denominator between the timeframes so we can perfectly divide each
+        dtf = f_gcd(tf_sec, orb_width_sec)
+        // request the highs and lows by the sub timeframe
+        [h, l] = request.security_lower_tf(syminfo.tickerid, timeframe.from_seconds(dtf), [high, low])
+        // extract ONLY the values that are inside the ORB timeframe
+        r_hi = array.max(f_slice_array_by_time(h, time, dtf, start_time, orb_width_sec))
+        r_lo = array.min(f_slice_array_by_time(l, time, dtf, start_time, orb_width_sec))
+        // reduce to the highest high and lowest low
+        hi := na(hi) ? r_hi : math.max(hi, r_hi)
+        lo := na(lo) ? r_lo : math.min(lo, r_lo)
+    else if not f_ranges_overlap(time, time_close, start_time, end_time)
+        hi := na
+        lo := na
+
+    if time_close < orb_end or time >= end_time
+        [na, na]
+    else 
+        [hi, lo]
+
+f_get_target_range_in_window(int start_time, int end_time) =>
+    var float ulhi = na
+    var float ullo = na
+    var float midhi = na
+    var float midlow = na
+    var float weakhi = na
+    var float weaklow = na
+    int orb_end = start_time + orb_width_sec * 1000
+    
+    if f_ranges_overlap(time, time_close, start_time, orb_end)
+        // find the common denominator between the timeframes so we can perfectly divide each
+        dtf = f_gcd(tf_sec, orb_width_sec)
+        // request the highs and lows by the sub timeframe
+        [o] = request.security_lower_tf(syminfo.tickerid, timeframe.from_seconds(dtf), [open])
+        range_open = array.get(o, 0)
+        // extract ONLY the values that are inside the ORB timeframe
+        priceSqrt = math.pow(range_open, 0.5)
+        midhi := math.pow(priceSqrt+(0.618),2)
+        midlow := math.pow(priceSqrt-(0.618),2)
+        weakhi := math.pow(priceSqrt+(0.382),2)
+        weaklow := math.pow(priceSqrt-(0.382),2)
+        ulhi := math.pow(priceSqrt+(0.618+0.382),2)
+        ullo := math.pow(priceSqrt-(0.618+0.382),2)
+    else if not f_ranges_overlap(time, time_close, start_time, end_time)
+        ulhi := na
+        ullo := na
+        midhi := na
+        midlow := na
+        weakhi := na
+        weaklow := na
+    if time_close < orb_end or time >= end_time
+        [na, na,na,na,na,na]
+    else 
+        [ulhi, ullo,midhi,midlow,weakhi,weaklow]
+
+// Define conversion constants for clarity and maintainability.
+const int MS_IN_SECOND = 1000
+const int MS_IN_MINUTE = 1000 * 60
+const int MS_IN_HOUR   = 1000 * 60 * 60
+
+// Helper function to pad single-digit numbers with a leading zero (e.g., 7 -> "07").
+f_pad(number) => (number < 10 ? "0" : "") + str.tostring(number)
+
+f_formatDurationHMS(totalMilliseconds) =>
+    // --- Calculations ---
+    // Calculate total hours from the milliseconds.
+    int hours = math.floor(totalMilliseconds / MS_IN_HOUR)
+    int remainder_after_hours = totalMilliseconds % MS_IN_HOUR
+
+    // From the remainder, calculate the number of full minutes.
+    int minutes = math.floor(remainder_after_hours / MS_IN_MINUTE)
+    int remainder_after_minutes = remainder_after_hours % MS_IN_MINUTE
+
+    // From the final remainder, calculate the number of seconds.
+    int seconds = math.floor(remainder_after_minutes / MS_IN_SECOND)
+
+    result = array.new<string>(0)
+
+    if hours > 0
+        array.push(result, str.tostring(hours) + "h")
+
+    if minutes > 0
+        array.push(result, str.tostring(minutes) + "m")
+
+    if seconds > 0
+        array.push(result, str.tostring(seconds) + "s")
+
+    array.join(result, " ")
+
+gold_smart_range_tz = "Asia/Riyadh"
+int gold_start = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), 3, 0)
+int gold_end = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), 23, 0)
+[ulhi, ullo,midhi,midlow,weakhi,weaklow] = f_get_target_range_in_window(gold_start,gold_end)
+plot(ulhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+plot(ullo, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+plot(midhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+plot(midlow, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+plot(weakhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+plot(weaklow, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+
+
+string asia_timezone = "Asia/Hong_Kong"
+int asia_start = asia_enabled ? timestamp(asia_timezone, year(time, asia_timezone), month(time, asia_timezone), dayofmonth(time, asia_timezone), 8, 0) : 0
+int asia_end = asia_enabled ? timestamp(asia_timezone, year(time, asia_timezone), month(time, asia_timezone), dayofmonth(time, asia_timezone), 16, 0) : 0
+bool is_asia = asia_enabled and time >= asia_start and time < asia_end
+float asia_high = na
+float asia_low = na
+
+if asia_enabled
+    [h, l] = f_get_range_in_window(asia_start, asia_end)
+    asia_high := h
+    asia_low := l
+
+bgcolor(asia_enabled and is_asia ? color.new(color.blue, 90) : na, title = "Asia Session")
+plot(asia_enabled ? asia_high : na, "Asia Opening Range High", color = color.blue, style = plot.style_linebr)
+plot(asia_enabled ? asia_low : na, "Asia Opening Range Low", color = color.blue, style = plot.style_linebr)
+
+string london_timezone = "Europe/London"
+int london_start = london_enabled ? timestamp(london_timezone, year(time, london_timezone), month(time, london_timezone), dayofmonth(time, london_timezone), 8, 0) : 0
+int london_end = london_enabled ? timestamp(london_timezone, year(time, london_timezone), month(time, london_timezone), dayofmonth(time, london_timezone), 16, 30) : 0
+bool is_london = london_enabled and time >= london_start and time < london_end
+float london_high = na
+float london_low = na
+
+if london_enabled
+    [h, l] = f_get_range_in_window(london_start, london_end)
+    london_high := h
+    london_low := l
+
+bgcolor(london_enabled and is_london ? color.new(color.yellow, 90) : na, title = "London Session")
+plot(london_enabled ? london_high : na, "London Opening Range High", color = color.yellow, style = plot.style_linebr)
+plot(london_enabled ? london_low : na, "London Opening Range Low", color = color.yellow, style = plot.style_linebr)
+
+string newyork_timezone = "America/New_York"
+int newyork_start = newyork_enabled ? timestamp(newyork_timezone, year(time, newyork_timezone), month(time, newyork_timezone), dayofmonth(time, newyork_timezone), 9, 30) : 0
+int newyork_end = newyork_enabled ? timestamp(newyork_timezone, year(time, newyork_timezone), month(time, newyork_timezone), dayofmonth(time, newyork_timezone), 16, 0) : 0
+bool is_newyork = newyork_enabled and time >= newyork_start and time < newyork_end
+float newyork_high = na
+float newyork_low = na
+
+if newyork_enabled
+    [h, l] = f_get_range_in_window(newyork_start, newyork_end)
+    newyork_high := h
+    newyork_low := l
+
+bgcolor(newyork_enabled and is_newyork ? color.new(color.purple, 90) : na, title = "New York Session")
+plot(newyork_enabled ? newyork_high : na, "New York Opening Range High", color = color.purple, style = plot.style_linebr)
+plot(newyork_enabled ? newyork_low : na, "New York Opening Range Low", color = color.purple, style = plot.style_linebr)
+
+var line session_start_line = na
+var label session_start_label = na
+var line session_end_line = na
+var label session_end_label = na
+
+if next_session_enabled and barstate.islast
+    line.delete(session_start_line)
+    label.delete(session_start_label)
+    line.delete(session_end_line)
+    label.delete(session_end_label)
+    start_times = array.new<int>(0)
+    end_times = array.new<int>(0)
+    string start_label_text = na
+
+    if asia_enabled
+        if time < asia_start
+            array.push(start_times, asia_start)
+        if time < asia_end
+            array.push(end_times, asia_end)
+    
+    if london_enabled
+        if time < london_start
+            array.push(start_times, london_start)
+        if time < london_end
+            array.push(end_times, london_end)
+    
+    if newyork_enabled
+        if time < newyork_start
+            array.push(start_times, newyork_start)
+        if time < newyork_end
+            array.push(end_times, newyork_end)
+    
+    if array.size(start_times) > 0
+        next_time = array.min(start_times)
+        duration = next_time - timenow
+        start_label_text := next_time == asia_start ? "Asia" : next_time == london_start ? "London" : "New York"
+        session_start_line := line.new(next_time, low, next_time, high, xloc.bar_time, extend.both, color.new(color.white, 50), line.style_dotted)
+        session_start_label := label.new(next_time, close, start_label_text + " Begins " + f_formatDurationHMS(duration), xloc.bar_time, style=label.style_label_lower_left, color=color.new(color.black, 100), size=size.small, textcolor=color.new(color.white, 50))
+    
+    if array.size(end_times) > 0
+        next_time = array.min(end_times)
+        duration = next_time - timenow
+        label_text = next_time == asia_end ? "Asia" : next_time == london_end ? "London" : "New York"
+
+        if label_text != start_label_text
+            session_end_line := line.new(next_time, low, next_time, high, xloc.bar_time, extend.both, color.new(color.white, 50), line.style_dotted)
+            session_end_label := label.new(next_time, close, label_text + " Ends " + f_formatDurationHMS(duration), xloc.bar_time, style=label.style_label_upper_left, color=color.new(color.black, 100), size=size.small, textcolor=color.new(color.white, 50))
