@@ -9,6 +9,9 @@ bool next_session_enabled = input(true, title = "Mark Next Session Start and End
 bool london_enabled = input(true, title = "London Session Enabled")
 bool asia_enabled = input(true, title = "Asia Session Enabled")
 bool newyork_enabled = input(true, title = "New York Session Enabled")
+bool bydegree = input(true, title = "calc by degree")
+float laplus = input(0.1,title="laplus")
+int srcTime = input(1,title="source time")
 
 int orb_width_sec = timeframe.in_seconds(orb_tf)
 int tf_sec = timeframe.in_seconds()
@@ -116,15 +119,25 @@ f_get_target_range_in_window(int start_time, int end_time) =>
         dtf = f_gcd(tf_sec, orb_width_sec)
         // request the highs and lows by the sub timeframe
         [o] = request.security_lower_tf(syminfo.tickerid, timeframe.from_seconds(dtf), [open])
-        range_open = array.get(o, 0)
+        range_open = array.get(o, 0) * laplus
         // extract ONLY the values that are inside the ORB timeframe
         priceSqrt = math.pow(range_open, 0.5)
-        midhi := math.pow(priceSqrt+(0.618),2)
-        midlow := math.pow(priceSqrt-(0.618),2)
-        weakhi := math.pow(priceSqrt+(0.382),2)
-        weaklow := math.pow(priceSqrt-(0.382),2)
-        ulhi := math.pow(priceSqrt+(0.618+0.382),2)
-        ullo := math.pow(priceSqrt-(0.618+0.382),2)
+        if not bydegree 
+            midhi := math.pow(priceSqrt+(0.618),2) / laplus
+            midlow := math.pow(priceSqrt-(0.618),2)/ laplus
+            weakhi := math.pow(priceSqrt+(0.382),2)/ laplus
+            weaklow := math.pow(priceSqrt-(0.382),2)/ laplus
+            ulhi := math.pow(priceSqrt+(0.618+0.382),2)/ laplus
+            ullo := math.pow(priceSqrt-(0.618+0.382),2)/ laplus
+        else 
+            midhi := math.pow(priceSqrt+(0.180),2)/ laplus
+            midlow := math.pow(priceSqrt-(0.180),2)/ laplus
+            weakhi := math.pow(priceSqrt+(0.090),2)/ laplus
+            weaklow := math.pow(priceSqrt-(0.090),2)/ laplus
+            ulhi := math.pow(priceSqrt+(0.045),2)/ laplus
+            ullo := math.pow(priceSqrt-(0.045),2)/ laplus
+
+
     else if not f_ranges_overlap(time, time_close, start_time, end_time)
         ulhi := na
         ullo := na
@@ -172,7 +185,7 @@ f_formatDurationHMS(totalMilliseconds) =>
     array.join(result, " ")
 
 gold_smart_range_tz = "Asia/Riyadh"
-int gold_start = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), 3, 0)
+int gold_start = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), srcTime, 0)
 int gold_end = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), 23, 0)
 [ulhi, ullo,midhi,midlow,weakhi,weaklow] = f_get_target_range_in_window(gold_start,gold_end)
 plot(ulhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
@@ -278,3 +291,47 @@ if next_session_enabled and barstate.islast
         if label_text != start_label_text
             session_end_line := line.new(next_time, low, next_time, high, xloc.bar_time, extend.both, color.new(color.white, 50), line.style_dotted)
             session_end_label := label.new(next_time, close, label_text + " Ends " + f_formatDurationHMS(duration), xloc.bar_time, style=label.style_label_upper_left, color=color.new(color.black, 100), size=size.small, textcolor=color.new(color.white, 50))
+
+
+
+// 1. Input fields for Start and End time
+sunriseTime = input.time(timestamp("2026-10-02 05:59"), title="Start Time")
+dawnTime   = input.time(timestamp("2026-10-02 17:46"), title="End Time")
+
+// 2. Calculate the total duration and the 1/4 interval step
+duration = dawnTime - sunriseTime
+interval = duration / 4
+
+// 3. Calculate the 5 specific time points
+t1 = sunriseTime
+t2 = sunriseTime + interval
+t3 = sunriseTime + interval * 2
+t4 = sunriseTime + interval * 3
+t5 = dawnTime
+
+// Helper function to format UNIX time to a readable string (Exchange timezone)
+formatTime(t) =>
+    str.format("{0,date,yyyy-MM-dd HH:mm:ss}", t)
+
+// 4. Initialize the table in the top right corner using 'var' so it's only created once
+var tbl = table.new(position.top_right, columns = 2, rows = 6, bgcolor = color.new(color.black, 80), border_color = color.gray, border_width = 1)
+
+// Populate Headers
+table.cell(tbl, column = 0, row = 0, text = "Interval", text_color = color.white, bgcolor = color.blue)
+table.cell(tbl, column = 1, row = 0, text = "Timestamp", text_color = color.white, bgcolor = color.blue)
+
+// Populate Rows with the 5 calculated times
+table.cell(tbl, 0, 1, "Start (0%)", text_color = color.white)
+table.cell(tbl, 1, 1, formatTime(t1), text_color = color.white)
+
+table.cell(tbl, 0, 2, "25%", text_color = color.white)
+table.cell(tbl, 1, 2, formatTime(t2), text_color = color.white)
+
+table.cell(tbl, 0, 3, "50%", text_color = color.white)
+table.cell(tbl, 1, 3, formatTime(t3), text_color = color.white)
+
+table.cell(tbl, 0, 4, "75%", text_color = color.white)
+table.cell(tbl, 1, 4, formatTime(t4), text_color = color.white)
+
+table.cell(tbl, 0, 5, "End (100%)", text_color = color.white)
+table.cell(tbl, 1, 5, formatTime(t5), text_color = color.white)
