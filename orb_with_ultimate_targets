@@ -9,7 +9,8 @@ bool next_session_enabled = input(true, title = "Mark Next Session Start and End
 bool london_enabled = input(true, title = "London Session Enabled")
 bool asia_enabled = input(true, title = "Asia Session Enabled")
 bool newyork_enabled = input(true, title = "New York Session Enabled")
-bool bydegree = input(true, title = "calc by degree")
+bool bydegree = input(false, title = "calc by degree")
+bool divbycube = input(false, title = "div by cube")
 float laplus = input(0.1,title="laplus")
 int srcTime = input(1,title="source time")
 
@@ -122,20 +123,27 @@ f_get_target_range_in_window(int start_time, int end_time) =>
         range_open = array.get(o, 0) * laplus
         // extract ONLY the values that are inside the ORB timeframe
         priceSqrt = math.pow(range_open, 0.5)
-        if not bydegree 
-            midhi := math.pow(priceSqrt+(0.618),2) / laplus
-            midlow := math.pow(priceSqrt-(0.618),2)/ laplus
-            weakhi := math.pow(priceSqrt+(0.382),2)/ laplus
-            weaklow := math.pow(priceSqrt-(0.382),2)/ laplus
-            ulhi := math.pow(priceSqrt+(0.618+0.382),2)/ laplus
-            ullo := math.pow(priceSqrt-(0.618+0.382),2)/ laplus
-        else 
+        if divbycube 
+            midhi := math.pow(priceSqrt+(0.618),3) / laplus
+            midlow := math.pow(priceSqrt-(0.618),3)/ laplus
+            weakhi := math.pow(priceSqrt+(0.382),3)/ laplus
+            weaklow := math.pow(priceSqrt-(0.382),3)/ laplus
+            ulhi := math.pow(priceSqrt+(0.618+0.382),3)/ laplus
+            ullo := math.pow(priceSqrt-(0.618+0.382),3)/ laplus
+        else if bydegree 
             midhi := math.pow(priceSqrt+(0.180),2)/ laplus
             midlow := math.pow(priceSqrt-(0.180),2)/ laplus
             weakhi := math.pow(priceSqrt+(0.090),2)/ laplus
             weaklow := math.pow(priceSqrt-(0.090),2)/ laplus
             ulhi := math.pow(priceSqrt+(0.045),2)/ laplus
             ullo := math.pow(priceSqrt-(0.045),2)/ laplus
+        else  
+            midhi := math.pow(priceSqrt+(0.618),2) / laplus
+            midlow := math.pow(priceSqrt-(0.618),2)/ laplus
+            weakhi := math.pow(priceSqrt+(0.382),2)/ laplus
+            weaklow := math.pow(priceSqrt-(0.382),2)/ laplus
+            ulhi := math.pow(priceSqrt+(0.618+0.382),2)/ laplus
+            ullo := math.pow(priceSqrt-(0.618+0.382),2)/ laplus
 
 
     else if not f_ranges_overlap(time, time_close, start_time, end_time)
