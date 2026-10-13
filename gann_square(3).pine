@@ -1,0 +1,98 @@
+//@version=6
+indicator("Gann Square (Fan + Arcs) - Price to Price", overlay = true, max_lines_count = 500, max_polylines_count = 100)
+
+// ── Inputs ────────────────────────────────────────────────────────────
+startPrice = input.float(0.0, "Start price (bottom-left corner)", tooltip = "0 = auto: Low of the origin bar")
+endPrice   = input.float(0.0, "End price (top edge of square)",   tooltip = "0 = auto: Highest high from origin bar to now")
+originBack = input.int(100, "Origin: bars back from last bar", minval = 0)
+sizeBars   = input.int(100, "Square width (bars)", minval = 5, tooltip = "Width of the square in bars. The height is always start price -> end price. Use a multiple of the replica count (e.g. 100 for 5x5) so the small squares are exact.")
+arcSegments = input.int(60, "Arc smoothness (points per arc)", minval = 10, maxval = 200)
+
+lineCol = input.color(color.white, "Line colour")
+arcCol  = input.color(color.white, "Arc colour")
+boxCol  = input.color(color.white, "Border colour")
+lw      = input.int(1, "Line width", minval = 1, maxval = 4)
+
+showReplicas = input.bool(true, "Fill with replicas", group = "Replicas")
+gridN        = input.int(5, "Replicas per side (5 = 25 squares)", minval = 2, maxval = 6, group = "Replicas")
+repLineCol   = input.color(color.new(color.white, 35), "Replica line colour", group = "Replicas")
+repArcCol    = input.color(color.new(color.white, 35), "Replica arc colour",  group = "Replicas")
+repLw        = input.int(1, "Replica line width", minval = 1, maxval = 4, group = "Replicas")
+
+// ── Geometry ratios (taken from the picture) ──────────────────────────
+var float[] topRatios   = array.from(0.125, 0.2, 0.25, 1.0 / 3.0, 0.5)
+var float[] rightRatios = array.from(0.5, 1.0 / 3.0, 0.25, 0.2, 0.125)
+var float[] radii       = array.from(0.20, 0.28, 0.30, 0.40, 0.445, 0.60, 0.63, 0.80, 0.825, 1.00)  // ascending
+
+var array<line>     lns   = array.new<line>()
+var array<polyline> polys = array.new<polyline>()
+
+autoHigh = ta.highest(high, originBack + 1)
+
+// ── Global-scope helpers (Pine does not allow functions inside if/for blocks) ──
+f_line(float xa, float ya, float xb, float yb, color col, int wd) =>
+    array.push(lns, line.new(int(math.round(xa)), ya, int(math.round(xb)), yb, xloc = xloc.bar_index, color = col, width = wd))
+
+// Diagonal + all fan lines of one square (origin at x0,y0; width wsq bars; signed height hsq)
+f_fan(float x0, float y0, float wsq, float hsq, color col, int wd) =>
+    f_line(x0, y0, x0 + wsq, y0 + hsq, col, wd)
+    for r in topRatios
+        f_line(x0, y0, x0 + wsq * r, y0 + hsq, col, wd)
+    for r in rightRatios
+        f_line(x0, y0, x0 + wsq, y0 + hsq * r, col, wd)
+
+// All concentric arcs of one square as ONE polyline (keeps polyline count low).
+// The arcs are chained zig-zag: each joining segment runs along the left or bottom
+// edge of the square, i.e. exactly on the border, so nothing extra is visible.
+f_arcs(float x0, float y0, float wsq, float hsq, color col, int wd) =>
+    pts = array.new<chart.point>()
+    for k = 0 to array.size(radii) - 1
+        r = array.get(radii, k)
+        forward = k % 2 == 0
+        for i = 0 to arcSegments
+            j   = forward ? i : arcSegments - i
+            ang = (math.pi / 2.0) * j / arcSegments
+            array.push(pts, chart.point.from_index(int(math.round(x0 + wsq * r * math.cos(ang))), y0 + hsq * r * math.sin(ang)))
+    array.push(polys, polyline.new(pts, curved = false, line_color = col, line_width = wd))
+
+// ── Drawing (only on the last bar) ────────────────────────────────────
+if barstate.islast
+    for l in lns
+        line.delete(l)
+    array.clear(lns)
+    for p in polys
+        polyline.delete(p)
+    array.clear(polys)
+
+    x0 = bar_index - originBack
+    y0 = startPrice != 0.0 ? startPrice : low[originBack]
+    y1 = endPrice   != 0.0 ? endPrice   : autoHigh
+    W  = float(sizeBars)
+    H  = y1 - y0            // signed: works for squares drawn downward too
+    x1 = x0 + sizeBars
+
+    // ── main square ──
+    f_line(x0, y0, x1, y0, boxCol, lw)
+    f_line(x1, y0, x1, y1, boxCol, lw)
+    f_line(x1, y1, x0, y1, boxCol, lw)
+    f_line(x0, y1, x0, y0, boxCol, lw)
+    f_fan(x0, y0, W, H, lineCol, lw)
+    f_arcs(x0, y0, W, H, arcCol, lw)
+
+    // ── N x N exact replicas tiling the main square ──
+    if showReplicas
+        cw = W / gridN
+        ch = H / gridN
+
+        // inner grid lines (outer edges are the main border)
+        for c = 1 to gridN - 1
+            f_line(x0 + cw * c, y0, x0 + cw * c, y1, repLineCol, repLw)
+            f_line(x0, y0 + ch * c, x1, y0 + ch * c, repLineCol, repLw)
+
+        // each cell gets the full fan + arc set, scaled to 1/N
+        for cx = 0 to gridN - 1
+            for cy = 0 to gridN - 1
+                ox = x0 + cw * cx
+                oy = y0 + ch * cy
+                f_fan(ox, oy, cw, ch, repLineCol, repLw)
+                f_arcs(ox, oy, cw, ch, repArcCol, repLw)
