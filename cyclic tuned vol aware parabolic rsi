@@ -5,7 +5,6 @@
 indicator("Cyclic tuned Parabolic RSI", overlay = false)
 domcycle =input.int(20, minval=10, title="Dominant Cycle Length #1")
 
-
 src = close
 
 // { Inputs
@@ -30,6 +29,8 @@ showdetrendedS = input.string('On', ' Detrended', options=['On', 'Off'], group
 upcolor = input.color(defval=#363A45, title='  Colors:  Up', group='ZigZag', inline='color')
 downcolor = input.color(defval=#363A45, title=' Down', group='ZigZag', inline='color')
 txtcol = input.color(defval=#787B86, title=' Text', group='ZigZag', inline='color')
+rsicol = input.color(defval=color.rgb(245, 110, 19), title=' Text', group='RSI', inline='color')
+
 
 //... Switches
 showdistance = showdistanceS == 'On' ? true : false
@@ -256,7 +257,7 @@ lowband = plot(db, "LowBand #1", color=color.aqua)
 highband = plot(ub, "HighBand #1", color=color.aqua)
 //fill(h1, h2, color=color.rgb(178, 181, 190, 86))
 fill(lowband, highband, color=color.rgb(120, 123, 134, 92))
-plot(crsi, "CRSI #1", color=color.rgb(251, 248, 64))
+plot(crsi, "CRSI #1", color=rsicol)
 
 
 dx_stochK = 100 * (src - ta.lowest(src, cyclelen*2)) / (ta.highest(src, cyclelen*2) - ta.lowest(src, cyclelen*2))
@@ -1144,3 +1145,21 @@ bgcolor( cdm < ddb ? color.new(#00ff00, 90) : na, title="signal")
 bgcolor( ccci < cdb ? color.new(#00ff00, 90) : na, title="signal")
 bgcolor( crsi < db ? color.new(#00ff00, 90) : na, title="signal")
 
+hline(70, "80", color = color.gray, linestyle = hline.style_dashed)
+hline(30, "20", color = color.gray, linestyle = hline.style_dashed)
+hline(50, "20", color = color.fuchsia, linestyle = hline.style_dashed)
+
+
+volumeThreshold = input.float(2.0, title="Volume Threshold (x Average)", minval=1.0, step=0.1)
+
+
+buyVolume = volume * (close > open ? 1 : 0)
+
+
+averageBuyVolume = ta.sma(buyVolume, domcycle)
+
+
+anomalousBuyVolume = buyVolume > averageBuyVolume * volumeThreshold and sig_up
+
+
+plotshape(series=anomalousBuyVolume, title="🐋", location=location.bottom, color=color.green, style=shape.labeldown, text="🐋", textcolor=color.white, size=size.tiny, offset=-1,force_overlay = true)
