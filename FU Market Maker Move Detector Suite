@@ -2,6 +2,9 @@
 indicator("FU Market Maker Move Detector Suite", overlay=true)
 
 
+
+
+
 //inputs
 candleDifferenceScale = input.float(defval = 1.8, minval = 1, title = 'Zone Difference Scale', tooltip = 'The scale of how much a candle needs to be larger than a previous to be considered a zone. (candleChange / candleChange[1] > {value}, minimum value 1.0, default 1.8)', group = 'Zone Settings')
 
@@ -36,6 +39,112 @@ display4h = input.bool(true, title="Show 4h Zones", group = 'Timeframe Options')
 displayD = input.bool(false, title="Show Daily Zones", group = 'Timeframe Options')
 displayW = input.bool(false, title="Show Weekly Zones", group = 'Timeframe Options')
 
+
+
+var bufferSize = 10
+var volumeSurgeBucket = array.new_float(bufferSize+1)
+var directionBucket = array.new_bool(bufferSize+1)
+// ─────────────── Input Parameters ───────────────
+efiLength          = input.int(13,  title="EFI Length",                 minval=1)
+efiAvgPeriod       = input.int(20,  title="Calibrated EFI Avg Period",  minval=1)
+volPeriod          = input.int(50,  title="Volatility Period",          minval=1)
+surgeMultiplier    = input.float(6, title="Surge Multiplier",           step=0.1)
+surgeRateThreshold = input.float(99.0, title="Surge Rate (%) Threshold",  step=0.1)
+trendPeriod        = input.int(50,  title="Trend MA Period",            minval=1)
+
+
+// User inputs
+shadowFactor = input.float(2.0, title="Shadow Factor (Multiplier)", step=0.1, tooltip="Wick length must be greater than body length * Shadow Factor")
+minBody      = input.float(0.0, title="Minimum Body Size", step=0.1, tooltip="Optional minimum body size to filter out dojis")
+
+literalStrength = input.float(0.0, title="Filter tick strength", step=0.1, tooltip="Filter tick strength")
+// ─────────────── Persistent Variable for Label Tracking ───────────────
+var string lastSurgeLabel = ""
+
+// ─────────────── EFI Calculation & Volatility ───────────────
+// Calculate EFI
+efiValue = ta.ema((close - close[1]) * volume, efiLength)
+// Compute volatility as the standard deviation of percentage returns
+ret        = 100 * (close - close[1]) / close[1]
+volatility = ta.stdev(ret, volPeriod)
+// Calibrate EFI by normalizing it with volatility
+calibratedEFI = volatility != 0 ? efiValue / volatility : 0
+absCalibratedEFI = math.abs(calibratedEFI)
+
+// ─────────────── Baseline & Derived Metrics for Surge Detection ───────────────
+calibratedEFIAvg = ta.sma(absCalibratedEFI, efiAvgPeriod)
+calibratedEFIRatio = absCalibratedEFI / calibratedEFIAvg
+calibratedEFIROC = absCalibratedEFI[1] != 0 ? 100 * (absCalibratedEFI - absCalibratedEFI[1]) / absCalibratedEFI[1] : 0
+
+// ─────────────── Early Surge Detection ───────────────
+crossover_condition = ta.crossover(calibratedEFIRatio, surgeMultiplier)
+earlySurge = crossover_condition and (calibratedEFIROC > surgeRateThreshold)
+
+// ─────────────── Trend Determination ───────────────
+trendMA = ta.ema(close, trendPeriod)
+trendUp = close > trendMA
+trendIndicator = trendUp ? "Uptrend" : "Downtrend"
+
+// Calculate candle components
+body       = math.abs(close - open)
+lowerWick  = math.min(open, close) - low
+upperWick  = high - math.max(open, close)
+
+// Define conditions:
+// For bearish candles: candle is red (close < open) and the lower wick is longer than (body * shadowFactor)
+bearLongLower = close < open and body > minBody and lowerWick > body * shadowFactor
+
+// For bullish candles: candle is green (close > open) and the upper wick is longer than (body * shadowFactor)
+bullLongUpper = close > open and body > minBody and upperWick > body * shadowFactor
+
+
+
+// ─────────────── Plotting ───────────────
+//plot(trendMA, title="Trend MA", color=color.purple)
+plotshape(earlySurge and bullLongUpper , title="EFI Early Surge Signal",      location=location.belowbar, color=#ff1bfb, style= shape.triangleup  , size=size.small)
+plotshape(earlySurge and bearLongLower , title="EFI Early Surge Signal",      location=location.abovebar, color=color.rgb(68, 0, 255), style= shape.triangledown  , size=size.small)
+
+// Add price range labels
+if (earlySurge and bullLongUpper)
+    label.new(bar_index, 0, str.tostring(math.round(calibratedEFIRatio/ (high - low),2)), yloc=yloc.abovebar,          style=label.style_none, textcolor=#ff1bfb, size=size.small)
+    label.new(bar_index, 0, str.tostring((high - low)), yloc=yloc.belowbar,          style=label.style_none, textcolor=color.rgb(255, 244, 27), size=size.small)
+    // Add new closing price and remove oldest if buffer is full
+    array.push(volumeSurgeBucket, math.round(calibratedEFIRatio/ (high - low),2))
+    if array.size(volumeSurgeBucket) > bufferSize
+        array.shift(volumeSurgeBucket) // Remove the oldest element
+    array.push(directionBucket, true)
+    if array.size(directionBucket) > bufferSize
+        array.shift(directionBucket) // Remove the oldest element
+
+    
+if (earlySurge and bearLongLower)
+    label.new(bar_index, 0, str.tostring(math.round(calibratedEFIRatio/ (high - low),2)), yloc=yloc.belowbar,          style=label.style_none, textcolor=color.rgb(255, 255, 255), size=size.small)
+    label.new(bar_index, 0,  str.tostring((high - low)), yloc=yloc.abovebar,          style=label.style_none, textcolor=color.rgb(255, 255, 255), size=size.small)
+    array.push(volumeSurgeBucket, math.round(calibratedEFIRatio/ (high - low),2))
+    if array.size(volumeSurgeBucket) > bufferSize
+        array.shift(volumeSurgeBucket) // Remove the oldest element
+    array.push(directionBucket, false)
+    if array.size(directionBucket) > bufferSize
+        array.shift(directionBucket) // Remove the oldest element
+
+
+
+bgcolor(directionBucket.get(1) != directionBucket.get(0) and directionBucket.get(2) == directionBucket.get(1) and volumeSurgeBucket.get(0)> volumeSurgeBucket.get(1)   ? #3dcafda0 : na)
+
+
+// ─────────────── Annotate Surges ───────────────
+//if earlySurge
+//    surgeLabelText = "EFI Surge: " + trendIndicator
+//    if surgeLabelText != lastSurgeLabel
+//        label.new(bar_index, low, surgeLabelText, style=label.style_label_up, 
+//             color=(trendUp ? color.green : color.red), textcolor=color.white, size=size.tiny)
+//        lastSurgeLabel := surgeLabelText
+
+// ─────────────── Alert Condition ───────────────
+alertcondition(earlySurge, title="Calibrated EFI Early Surge", 
+     message="Calibrated EFI early surge detected using Shapiro algorithm.")
+
+
 // variables
 currentTimeframe = timeframe.period
 
@@ -48,6 +157,9 @@ if displayLowerTFZones
     currentTimeframe := '1'
 
 momentCTD = math.round(time(timeframe.period) + (zoneOffset * 60000 * str.tonumber(currentTimeframe)))
+
+
+
 
 
 
@@ -199,34 +311,34 @@ if displayW and str.tonumber(currentTimeframe) <= 10080
     // createSupplyDemandZones('M') // enabling this will break replay mode
 
 // remove broken supply
-
-i = 0
-while i < array.size(supply_HT) and array.size(supply_HT) > 0
-    box currentBox = array.get(supply_HT, i)
-    float breakLevel = box.get_top(currentBox)
-    if high > breakLevel 
-        array.remove(supply_HT, i)
-        box.delete(currentBox)
-        int(na)
-    else
-        box.set_right(currentBox, momentCTD)
-        i += 1
-        int(na)
+if textEnable
+    i = 0
+    while i < array.size(supply_HT) and array.size(supply_HT) > 0
+        box currentBox = array.get(supply_HT, i)
+        float breakLevel = box.get_top(currentBox)
+        if high > breakLevel 
+            array.remove(supply_HT, i)
+            box.delete(currentBox)
+            int(na)
+        else
+            box.set_right(currentBox, momentCTD)
+            i += 1
+            int(na)
 
 // remove broken demand
 
-i2 = 0
-while i2 < array.size(demand_HT) and array.size(demand_HT) > 0
-    box currentBox = array.get(demand_HT, i2)
-    float breakLevel = box.get_bottom(currentBox)
-    if low < breakLevel 
-        array.remove(demand_HT, i2)
-        box.delete(currentBox)
-        int(na)
-    else
-        box.set_right(currentBox, momentCTD)
-        i2 += 1
-        int(na)
+    i2 = 0
+    while i2 < array.size(demand_HT) and array.size(demand_HT) > 0
+        box currentBox = array.get(demand_HT, i2)
+        float breakLevel = box.get_bottom(currentBox)
+        if low < breakLevel 
+            array.remove(demand_HT, i2)
+            box.delete(currentBox)
+            int(na)
+        else
+            box.set_right(currentBox, momentCTD)
+            i2 += 1
+            int(na)
 
 // Inputs for styling
 showBullFU    = input.bool(true, "Highlight Bullish FU Candle")
@@ -341,16 +453,15 @@ alertcondition(bearishDJATTFU, title="Bearish Doji ATT FU Candle", message="Bear
 
 
 // Apply bar coloring
-barcolor(    showBullFU    and bullishFU    ? color.new(color.green, 0) :    showBullATT   and bullishATTFU ? color.new(color.teal, 0)  :    showBearFU    and bearishFU    ? color.new(color.red, 0)   :    showBearATT   and bearishATTFU ? color.new(color.maroon,0)  :    na)
-barcolor(    showDJBullFU    and bullishFU    ?  color.new(#7fbfcf, 0) :    showDJBullATT   and bullishDJATTFU ?   color.new(#05a6ce, 0) :    showDJBearFU    and bearishDJFU    ?  color.new(#a649f1, 0)  :    showDJBearATT   and bearishDJATTFU ?color.new(#4b0089, 0)   :    na)
+//barcolor(    showBullFU    and bullishFU    ? color.new(color.green, 0) :    showBullATT   and bullishATTFU ? color.new(color.teal, 0)  :    showBearFU    and bearishFU    ? color.new(color.red, 0)   :    showBearATT   and bearishATTFU ? color.new(color.maroon,0)  :    na)
+//barcolor(    showDJBullFU    and bullishFU    ?  color.new(#7fbfcf, 0) :    showDJBullATT   and bullishDJATTFU ?   color.new(#05a6ce, 0) :    showDJBearFU    and bearishDJFU    ?  color.new(#a649f1, 0)  :    showDJBearATT   and bearishDJATTFU ?color.new(#4b0089, 0)   :    na)
 
 
+//plotshape(showBullATT and bullishATTFU, style=shape.cross, location=location.belowbar, color=color.teal, offset=0, size=size.tiny)
+//plotshape(showBearATT and bearishATTFU, style=shape.cross, location=location.abovebar, color=color.maroon, offset=0, size=size.tiny)
 
-plotshape(showBullATT and bullishATTFU, style=shape.cross, location=location.belowbar, color=color.teal, offset=0, size=size.tiny)
-plotshape(showBearATT and bearishATTFU, style=shape.cross, location=location.abovebar, color=color.maroon, offset=0, size=size.tiny)
-
-plotshape(showBullFU and bullishFU, style=shape.cross, location=location.belowbar, color=color.green, offset=0, size=size.tiny)
-plotshape(showBearFU and bearishFU, style=shape.cross, location=location.abovebar, color=color.red, offset=0, size=size.tiny)
+//plotshape(showBullFU and bullishFU, style=shape.cross, location=location.belowbar, color=color.green, offset=0, size=size.tiny)
+//plotshape(showBearFU and bearishFU, style=shape.cross, location=location.abovebar, color=color.red, offset=0, size=size.tiny)
 // Conditions for a high bar (potential sell signal)
 highBar =  close < low[1]  and open[1]<close[1]
 
@@ -663,74 +774,6 @@ if sell_signal
 alertcondition(buy_signal, "Cyclic Reversal BUY", "Cyclic Reversal Engine: BUY Signal | Adaptive Cycle Target Met")
 alertcondition(sell_signal, "Cyclic Reversal SELL", "Cyclic Reversal Engine: SELL Signal | Adaptive Cycle Target Met")
 
-// ======================================================================================
-// SESSIONS
-// ======================================================================================
-
-// Candle components
-bodySize = math.abs(close - open)
-lowerWick = math.min(open, close) - low
-upperWick = high - math.max(open, close) 
-
-// Condition: bearish + body < lower wick
-rangingBear = (close < open) and (bodySize < lowerWick)
-rangingBull = (close > open) and (bodySize < upperWick)
-// Plot marker
-plotshape(rangingBear,      title="Ranging Bearish Bar",      location=location.abovebar, 
-     color=color.yellow, 
-     style=shape.triangledown, 
-     size=size.tiny)
-plotshape(rangingBull,      title="Ranging Bearish Bar",      location=location.belowbar, 
-     color=color.yellow, 
-     style=shape.triangleup, 
-     size=size.tiny)
-
-// Inputs
-periods = input.int(3, minval=1, title="Moving Average Period")
-pt  = input.bool(false, title="Plot Triangles on Bars?")
-pc  = input.bool(true,  title="Plot Swing Lines?")
-pttb = input.bool(true, title="Plot Screen Edge Triangles?")
-shb = input.bool(false, title="Highlight Bars on Cross?")
-sbh = input.bool(true,  title="Background Highlight on Cross?")
-
-// Smoothing
-smaHigh = ta.sma(high, periods)
-smaLow  = ta.sma(low, periods)
-
-// Trend direction (no lag version)
-var int trend = 0
-trend := close > smaHigh ? 1 : close < smaLow ? -1 : trend
-
-// Swing levels (persistent)
-var float hi = na
-var float lo = na
-
-if trend == -1
-    hi := smaHigh
-    lo := na
-else if trend == 1
-    lo := smaLow
-    hi := na
-
-// Cross conditions (correct way)
-crossUp   = ta.crossover(close, hi)
-crossDown = ta.crossunder(close, lo)
-
-// Bar highlight
-barcolor(shb and (crossUp or crossDown) ? color.yellow : na)
-
-// Background highlight
-//bgcolor(sbh and crossUp   ? color.new(color.green, 60) : na)
-//bgcolor(sbh and crossDown ? color.new(color.red, 60)   : na)
-
-// Plot lines
-plot(pc ? hi : na, title="Swing High", color=color.fuchsia, style=plot.style_linebr, linewidth=3)
-plot(pc ? lo : na, title="Swing Low",  color=color.lime,    style=plot.style_linebr, linewidth=3)
-
-// Triangles on bars
-plotshape(pt and not na(hi), style=shape.triangledown, location=location.abovebar, color=color.fuchsia)
-plotshape(pt and not na(lo), style=shape.triangleup,   location=location.belowbar, color=color.lime)
-
 isFU = bullishFU or bullishATTFU or bearishFU or bearishATTFU
 patternFound = doji[1] and isFU
 bgcolor(patternFound ? color.new(color.teal, 85) : na)
@@ -823,18 +866,6 @@ if barstate.islast
 
 
 
-fldPeriod = input.int(title="Period", defval=100, minval=3)
-fldsrc    = input.source(title="Source", defval=hl2)
-
-// Vertical mirror: invert values
-fldbaseline = ta.sma(fldsrc, fldPeriod)
-FLD = fldbaseline - ((fldsrc - fldbaseline)*1.5)
-
-plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.aqua, offset=fldPeriod)
-plot(FLD, title="FLD (Vertically Mirrored)", linewidth=1, color=color.green, offset=fldPeriod/2)
-plot(src, title="FLD ()", linewidth=1, color=color.rgb(175, 76, 137), offset=fldPeriod/2)
-plot(src, title="FLD ()", linewidth=1, color=color.rgb(238, 255, 0), offset=fldPeriod)
-
 // === INPUTS ===
 scalp_len = input.int(30, "Length", group="Core Settings")
 scalp_scale = input.float(200.0, "Scale (%)", minval=100, group="Core Settings")
@@ -885,3 +916,19 @@ plotshape(scalp_sellSignal, title="Sell", location=location.abovebar, color=colo
 //alertcondition(scalp_buySignal, title="Buy Signal", message="BUY: Oscillator crossed above oversold (-58)")
 
 //alertcondition(scalp_sellSignal, title="Sell Signal", message="SELL: Oscillator crossed below overbought (58)")
+outlinecolor =
+     showBullFU and bullishFU ? color.new(color.green,70) :
+     showBearFU and bearishFU ? color.new(color.red,70) :
+     showBullATT and bullishATTFU ? color.new(color.yellow,70) :
+     showBearATT and bearishATTFU ? color.new(color.fuchsia,70) :
+     na
+//plotcandle(open, high, low, close, color=close >= open ? color.white : color.blue, wickcolor=outlinecolor, bordercolor= outlinecolor)
+bgcolor(outlinecolor)
+
+
+hullma = ta.wma(2*ta.wma(src, cyclelen/2)-ta.wma(src, cyclelen), math.floor(math.sqrt(cyclelen)))
+plot(hullma, "Slow HMA",color=color.orange)
+
+hullma2 = ta.wma(2*ta.wma(src, cyclelen/2/2)-ta.wma(src, cyclelen/2), math.floor(math.sqrt(cyclelen/2)))
+plot(hullma2, "Fast HMA2",color=color.yellow)
+
