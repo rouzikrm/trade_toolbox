@@ -1,5 +1,10 @@
 // This Pine Script® code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
-// © tyler-johnson
+// © tyler-johnson - improved by RouziKRM
+
+// important retios usoil 0.08343 - gold 3.708 - euro 0.0002
+// important settings: gold laplus 1 and hour 3
+// usoil laplus 25 and hour 3
+// usoil laplus 50 and hour 3
 
 //@version=6
 indicator("Worldwide Sessions and Opening Range Breakout with ultimate targets", shorttitle = "ORB Sess", overlay = true)
@@ -11,11 +16,22 @@ bool asia_enabled = input(true, title = "Asia Session Enabled")
 bool newyork_enabled = input(true, title = "New York Session Enabled")
 bool bydegree = input(false, title = "calc by degree")
 bool divbycube = input(false, title = "div by cube")
-float laplus = input(0.1,title="laplus")
-int srcTime = input(1,title="source time")
+float deglaplus = input(0.1,title="deglaplus")
+float sqlaplus = input(0.1,title="sqlaplus")
+int srcTime = input(4,title="source time")
+float dolldiff = input(0.0, title="dollar diffrence")
+bool manual = input(false,title="use inputed price")
+float iprice = input(0.1,title="anticipated targets")
 
 int orb_width_sec = timeframe.in_seconds(orb_tf)
 int tf_sec = timeframe.in_seconds()
+
+var int crossOverCount = 0
+
+
+var int totalDays = 0
+var int crossDays = 0
+var bool crossedToday = false
 
 f_gcd(int a, int b) =>
     // Ensure numbers are positive, as GCD is defined for positive integers.
@@ -106,13 +122,19 @@ f_get_range_in_window(int start_time, int end_time) =>
     else 
         [hi, lo]
 
-f_get_target_range_in_window(int start_time, int end_time) =>
+f_get_target_range_in_window(int start_time, int end_time,float drift) =>
     var float ulhi = na
     var float ullo = na
     var float midhi = na
     var float midlow = na
     var float weakhi = na
     var float weaklow = na
+    var float sq_ulhi = na
+    var float sq_ullo = na
+    var float sq_midhi = na
+    var float sq_midlow = na
+    var float sq_weakhi = na
+    var float sq_weaklow = na
     int orb_end = start_time + orb_width_sec * 1000
     
     if f_ranges_overlap(time, time_close, start_time, orb_end)
@@ -120,30 +142,47 @@ f_get_target_range_in_window(int start_time, int end_time) =>
         dtf = f_gcd(tf_sec, orb_width_sec)
         // request the highs and lows by the sub timeframe
         [o] = request.security_lower_tf(syminfo.tickerid, timeframe.from_seconds(dtf), [open])
-        range_open = array.get(o, 0) * laplus
-        // extract ONLY the values that are inside the ORB timeframe
-        priceSqrt = math.pow(range_open, 0.5)
-        if divbycube 
-            midhi := math.pow(priceSqrt+(0.618),3) / laplus
-            midlow := math.pow(priceSqrt-(0.618),3)/ laplus
-            weakhi := math.pow(priceSqrt+(0.382),3)/ laplus
-            weaklow := math.pow(priceSqrt-(0.382),3)/ laplus
-            ulhi := math.pow(priceSqrt+(0.618+0.382),3)/ laplus
-            ullo := math.pow(priceSqrt-(0.618+0.382),3)/ laplus
-        else if bydegree 
-            midhi := math.pow(priceSqrt+(0.180),2)/ laplus
-            midlow := math.pow(priceSqrt-(0.180),2)/ laplus
-            weakhi := math.pow(priceSqrt+(0.090),2)/ laplus
-            weaklow := math.pow(priceSqrt-(0.090),2)/ laplus
-            ulhi := math.pow(priceSqrt+(0.045),2)/ laplus
-            ullo := math.pow(priceSqrt-(0.045),2)/ laplus
-        else  
-            midhi := math.pow(priceSqrt+(0.618),2) / laplus
-            midlow := math.pow(priceSqrt-(0.618),2)/ laplus
-            weakhi := math.pow(priceSqrt+(0.382),2)/ laplus
-            weaklow := math.pow(priceSqrt-(0.382),2)/ laplus
-            ulhi := math.pow(priceSqrt+(0.618+0.382),2)/ laplus
-            ullo := math.pow(priceSqrt-(0.618+0.382),2)/ laplus
+        if not na(array.get(o, 0)) 
+            
+            // extract ONLY the values that are inside the ORB timeframe
+    
+            if divbycube
+                range_open = array.get(o, 0) * sqlaplus
+                if manual
+                    range_open := iprice * sqlaplus
+                priceSqrt = math.pow(range_open, 0.5) 
+                midhi := math.pow(priceSqrt+(0.618),3) / sqlaplus
+                midlow := math.pow(priceSqrt-(0.618),3)/ sqlaplus
+                weakhi := math.pow(priceSqrt+(0.382),3)/ sqlaplus
+                weaklow := math.pow(priceSqrt-(0.382),3)/ sqlaplus
+                ulhi := math.pow(priceSqrt+(0.618+0.382),3)/ sqlaplus
+                ullo := math.pow(priceSqrt-(0.618+0.382),3)/ sqlaplus
+            else if bydegree 
+                sqrange_open = array.get(o, 0) * sqlaplus
+                if manual
+                    sqrange_open := iprice * sqlaplus
+                sqpriceSqrt = math.pow(sqrange_open, 0.5)
+                degrange_open = array.get(o, 0) * deglaplus
+                if manual
+                    degrange_open := iprice * deglaplus
+                
+                degpriceSqrt = math.pow(degrange_open, 0.5)
+             
+                midhi := math.pow(degpriceSqrt+(0.180),2)/ deglaplus
+                midlow := math.pow(degpriceSqrt-(0.180),2)/ deglaplus
+                weakhi := math.pow(degpriceSqrt+(0.090),2)/ deglaplus
+                weaklow := math.pow(degpriceSqrt-(0.090),2)/ deglaplus
+                ulhi := math.pow(degpriceSqrt+(0.045),2)/ deglaplus
+                ullo := math.pow(degpriceSqrt-(0.045),2)/ deglaplus
+                sq_midhi := math.pow(sqpriceSqrt+(0.618),2) / sqlaplus
+                sq_midlow := math.pow(sqpriceSqrt-(0.618),2)/ sqlaplus
+                sq_weakhi := math.pow(sqpriceSqrt+(0.382),2)/ sqlaplus
+                sq_weaklow := math.pow(sqpriceSqrt-(0.382),2)/ sqlaplus
+                sq_ulhi := math.pow(sqpriceSqrt+(0.618+0.382),2)/ sqlaplus
+                sq_ullo := math.pow(sqpriceSqrt-(0.618+0.382),2)/ sqlaplus
+           
+        else
+            [na, na,na,na,na,na,na, na,na,na,na,na]
 
 
     else if not f_ranges_overlap(time, time_close, start_time, end_time)
@@ -153,10 +192,16 @@ f_get_target_range_in_window(int start_time, int end_time) =>
         midlow := na
         weakhi := na
         weaklow := na
+        sq_ulhi := na
+        sq_ullo := na
+        sq_midhi := na
+        sq_midlow := na
+        sq_weakhi := na
+        sq_weaklow := na
     if time_close < orb_end or time >= end_time
-        [na, na,na,na,na,na]
+        [na, na,na,na,na,na,na, na,na,na,na,na]
     else 
-        [ulhi, ullo,midhi,midlow,weakhi,weaklow]
+        [ulhi, ullo,midhi,midlow,weakhi,weaklow,sq_ulhi, sq_ullo,sq_midhi,sq_midlow,sq_weakhi,sq_weaklow]
 
 // Define conversion constants for clarity and maintainability.
 const int MS_IN_SECOND = 1000
@@ -195,13 +240,64 @@ f_formatDurationHMS(totalMilliseconds) =>
 gold_smart_range_tz = "Asia/Riyadh"
 int gold_start = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), srcTime, 0)
 int gold_end = timestamp(gold_smart_range_tz, year(time, gold_smart_range_tz), month(time, gold_smart_range_tz), dayofmonth(time, gold_smart_range_tz), 23, 0)
-[ulhi, ullo,midhi,midlow,weakhi,weaklow] = f_get_target_range_in_window(gold_start,gold_end)
-plot(ulhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
-plot(ullo, "Gold Target Range", color = color.silver, style = plot.style_linebr)
-plot(midhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
-plot(midlow, "Gold Target Range", color = color.silver, style = plot.style_linebr)
-plot(weakhi, "Gold Target Range", color = color.silver, style = plot.style_linebr)
-plot(weaklow, "Gold Target Range", color = color.silver, style = plot.style_linebr)
+[ulhi, ullo,midhi,midlow,weakhi,weaklow,sq_ulhi, sq_ullo,sq_midhi,sq_midlow,sq_weakhi,sq_weaklow] = f_get_target_range_in_window(gold_start,gold_end,dolldiff)
+plot(ulhi, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+plot(ullo, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+plot(midhi, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+plot(midlow, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+plot(weakhi, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+plot(weaklow, "Gold Target Range", color = color.aqua, style = plot.style_linebr)
+
+plot(sq_ulhi, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+plot(sq_ullo, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+plot(sq_midhi, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+plot(sq_midlow, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+plot(sq_weakhi, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+plot(sq_weaklow, "Gold Target Range", color = color.lime, style = plot.style_linebr)
+
+
+plot(ta.crossunder(low,weaklow) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,weakhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+plot(ta.crossunder(low,midlow) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,midhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+plot(ta.crossunder(low,ullo) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,ulhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+
+plot(ta.crossunder(low,sq_weaklow) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,sq_weakhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+plot(ta.crossunder(low,sq_midlow) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,sq_midhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+plot(ta.crossunder(low,sq_ullo) ? low : na, "", color.red, style = plot.style_cross, linewidth = 3)
+plot(ta.crossover(high,sq_ulhi)    ? high : na, "", color.rgb(255, 221, 31), style = plot.style_cross, linewidth = 3)
+
+
+if timeframe.change("D")
+    totalDays += 1
+    crossedToday := false
+
+if ta.crossunder(low,weaklow) and not crossedToday 
+    crossedToday := true
+    crossOverCount += 1 
+    crossDays += 1
+if ta.crossunder(low,midlow)
+    crossOverCount += 1
+if ta.crossunder(low,ullo)
+    crossOverCount += 1
+
+if ta.crossover(high,weakhi) and not crossedToday 
+    crossedToday := true
+    crossOverCount += 1 
+    crossDays += 1
+if ta.crossover(high,midhi)
+    crossOverCount += 1
+if ta.crossover(high,ulhi)
+    crossOverCount += 1
+
+
+//if barstate.islast
+//    label.new(bar_index, high, "Cross days: " + str.tostring(crossDays) + " / " + str.tostring(totalDays) + " (" + str.tostring(crossDays / totalDays * 100, "#.##") + "%)")
+//plot(highdrift, "Gold Target Range", color = color.yellow, style = plot.style_linebr)
+//plot(lowdrift, "Gold Target Range", color = color.yellow, style = plot.style_linebr)
 
 
 string asia_timezone = "Asia/Hong_Kong"
@@ -315,14 +411,15 @@ t1 = sunriseTime
 t2 = sunriseTime + interval
 t3 = sunriseTime + interval * 2
 t4 = sunriseTime + interval * 3
-t5 = dawnTime
+t5 = sunriseTime + interval * 4
+t6 = sunriseTime + interval * 5
 
 // Helper function to format UNIX time to a readable string (Exchange timezone)
 formatTime(t) =>
     str.format("{0,date,yyyy-MM-dd HH:mm:ss}", t)
 
 // 4. Initialize the table in the top right corner using 'var' so it's only created once
-var tbl = table.new(position.top_right, columns = 2, rows = 6, bgcolor = color.new(color.black, 80), border_color = color.gray, border_width = 1)
+var tbl = table.new(position.top_right, columns = 2, rows = 8, bgcolor = color.new(color.black, 80), border_color = color.gray, border_width = 1)
 
 // Populate Headers
 table.cell(tbl, column = 0, row = 0, text = "Interval", text_color = color.white, bgcolor = color.blue)
@@ -332,14 +429,26 @@ table.cell(tbl, column = 1, row = 0, text = "Timestamp", text_color = color.whit
 table.cell(tbl, 0, 1, "Start (0%)", text_color = color.white)
 table.cell(tbl, 1, 1, formatTime(t1), text_color = color.white)
 
-table.cell(tbl, 0, 2, "25%", text_color = color.white)
+table.cell(tbl, 0, 2, "20%", text_color = color.white)
 table.cell(tbl, 1, 2, formatTime(t2), text_color = color.white)
 
-table.cell(tbl, 0, 3, "50%", text_color = color.white)
+table.cell(tbl, 0, 3, "40%", text_color = color.white)
 table.cell(tbl, 1, 3, formatTime(t3), text_color = color.white)
 
-table.cell(tbl, 0, 4, "75%", text_color = color.white)
+table.cell(tbl, 0, 4, "60%", text_color = color.white)
 table.cell(tbl, 1, 4, formatTime(t4), text_color = color.white)
 
-table.cell(tbl, 0, 5, "End (100%)", text_color = color.white)
+table.cell(tbl, 0, 5, "80%", text_color = color.white)
 table.cell(tbl, 1, 5, formatTime(t5), text_color = color.white)
+
+table.cell(tbl, 0, 6, "End (100%)", text_color = color.white)
+table.cell(tbl, 1, 6, formatTime(t6), text_color = color.white)
+
+table.cell(tbl, 0, 7, "Cross Over Count", text_color = color.white)
+table.cell(tbl, 1, 7, str.tostring(crossOverCount)+","+str.tostring(crossDays)+","+str.tostring(totalDays), text_color = color.white)
+
+
+
+
+//if (na(anomalousBuyVolume) and (buyVolume > averageBuyVolume * volumeThreshold))
+//    label.new(x=bar_index, y=high, text="🐋", color=color.green, textcolor=color.white, style=label.style_label_down)
