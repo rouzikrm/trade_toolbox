@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|  GannSquare.mq5                                                  |
+//|  GannSquareFixed2.mq5                                                  |
 //|  Gann square (fan + arcs) with 5x5 replicas, fixed by date,      |
 //|  smart line activation and alerts.                               |
 //+------------------------------------------------------------------+
@@ -27,10 +27,12 @@ input color    InpLineColor   = clrWhite;             // Line colour
 input color    InpArcColor    = clrWhite;             // Arc colour
 input color    InpBorderColor = clrWhite;             // Border colour
 input int      InpLineWidth   = 1;                    // Line width
+input double InpEnclosingBarFraction = 8.0;            // Enclosing Bar Fraction
 
 //--- Replicas -------------------------------------------------------
 input group "Replicas"
 input bool     InpReplicas       = true;                 // Fill with replicas
+input bool     FillReplicas       = false;                 // Fill inside replicas
 input int      InpGridN          = 5;                    // Replicas per side (5 = 25 squares)
 input color    InpRepLineColor   = C'125,125,125';       // Replica line colour
 input color    InpRepArcColor    = C'125,125,125';       // Replica arc colour
@@ -61,7 +63,7 @@ double g_top[5]    = {0.125, 0.2, 0.25, 1.0 / 3.0, 0.5};
 double g_right[5]  = {0.5, 1.0 / 3.0, 0.25, 0.2, 0.125};
 double g_radii[10] = {0.20, 0.28, 0.30, 0.40, 0.445, 0.60, 0.63, 0.80, 0.825, 1.00};
 
-const string PFX = "GannSq_";
+const string PFX = "GannSq3_";
 
 //--- One drawn line / arc. Coordinates are (bars from anchor, price). ---
 struct SItem
@@ -86,7 +88,98 @@ double   g_W = 0, g_y0 = 0, g_y1 = 0;
 datetime g_lastBar = 0;
 bool     g_built = false;
 
+bool hozone1 = false;
+bool hozone2 = false;
+bool hozone3 = false;
+bool hozone4 = false;
+bool hozone5 = false;
+
+bool timezone1 = false;
+bool timezone2 = false;
+bool timezone3 = false;
+bool timezone4 = false;
+bool timezone5 = false;
+
 //+------------------------------------------------------------------+
+
+bool GetLinePrice(string name, double &price)
+{
+   if(ObjectFind(0, name) < 0)
+   {
+      Print("Object not found: ", name);
+      return false;
+   }
+   return ObjectGetDouble(0, name, OBJPROP_PRICE, 0, price);
+}
+
+
+bool UpdateHoZones(string line1, string line2)
+{
+
+   double p1, p2;
+   if(!GetLinePrice(line1, p1) || !GetLinePrice(line2, p2))
+      return false;
+
+   double upper    = MathMax(p1, p2);
+   double lower    = MathMin(p1, p2);
+   double distance = upper - lower;
+   if(distance <= 0) return false;
+
+   double zone  = distance / InpEnclosingBarFraction;
+   double price = SymbolInfoDouble(_Symbol, SYMBOL_BID);
+
+   return (price <= lower + zone) || (price >= upper - zone);
+   
+   }
+   
+bool GetLineTime(string name, long &t)
+{
+   if(ObjectFind(0, name) < 0)
+   {
+      Print("Object not found: ", name);
+      return false;
+   }
+   return ObjectGetInteger(0, name, OBJPROP_TIME, 0, t);
+}
+
+bool UpdateTimeZones(string line1, string line2)
+{
+
+
+   long t1, t2;
+   if(!GetLineTime(line1, t1) || !GetLineTime(line2, t2))
+      return false;
+
+   long earlier  = MathMin(t1, t2);
+   long later    = MathMax(t1, t2);
+   long distance = later - earlier;          // in seconds
+   if(distance <= 0) return false;
+
+   double zone = (double)distance / InpEnclosingBarFraction;
+
+   // current time: server time of the latest tick
+   //long now = (long)TimeCurrent();
+   // alternative: open time of the current candle
+   long now = (long)iTime(_Symbol, _Period, 0);
+
+   return (now <= earlier + zone) || (now >= later - zone);
+}
+
+
+
+void OnTick()
+{
+   hozone1 = UpdateHoZones(PFX+"0",PFX+"26");
+   hozone2 = UpdateHoZones(PFX+"26",PFX+"28");
+   hozone3 = UpdateHoZones(PFX+"28",PFX+"30");
+   hozone4 = UpdateHoZones(PFX+"30",PFX+"32");
+   hozone5 = UpdateHoZones(PFX+"32",PFX+"1");
+   timezone1 = UpdateTimeZones(PFX+"2",PFX+"25");
+   timezone2 = UpdateTimeZones(PFX+"25",PFX+"27");
+   timezone3 = UpdateTimeZones(PFX+"27",PFX+"29");
+   timezone4 = UpdateTimeZones(PFX+"29",PFX+"31");
+   timezone5 = UpdateTimeZones(PFX+"31",PFX+"3");
+}
 int OnInit()
   {
    ArraySetAsSeries(g_rates, true);
@@ -367,9 +460,12 @@ void BuildItems()
          AddItem(5, 0.0, 0, g_y0, W, H, cw * c, g_y0, cw * c, g_y1, false, false, InpRepLineColor, InpRepLineWidth);
          AddItem(4, (double)c / N, 0, g_y0, W, H, 0, g_y0 + ch * c, W, g_y0 + ch * c, false, true, InpRepLineColor, InpRepLineWidth);
         }
+      if(FillReplicas)
+      {  
       for(int cx = 0; cx < N; cx++)
          for(int cy = 0; cy < N; cy++)
             AddCell(cw * cx, g_y0 + ch * cy, cw, ch, InpRepLineColor, InpRepArcColor, InpRepLineWidth);
+      }
      }
   }
 
@@ -432,9 +528,9 @@ void CheckAlerts()
      }
    string tf = StringSubstr(EnumToString((ENUM_TIMEFRAMES)_Period), 7);
    string cl = DoubleToString(g_rates[1].close, _Digits);
-   if(InpAlertRes && nR > 0)
+   if(InpAlertRes && nR > 0 && (hozone1 || hozone2 || hozone3 || hozone4 || hozone5 || timezone1 || timezone2 || timezone3 || timezone4 || timezone5) )
       Notify(StringFormat("Gann resistance activated on %s (%s) - close %s - %d line(s)", _Symbol, tf, cl, nR));
-   if(InpAlertSup && nS > 0)
+   if(InpAlertSup && nS > 0 && (hozone1 || hozone2 || hozone3 || hozone4 || hozone5 || timezone1 || timezone2 || timezone3 || timezone4 || timezone5) )
       Notify(StringFormat("Gann support activated on %s (%s) - close %s - %d line(s)", _Symbol, tf, cl, nS));
   }
 
