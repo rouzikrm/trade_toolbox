@@ -399,7 +399,7 @@ void StyleItem(const int i)
 //+------------------------------------------------------------------+
 //| item construction                                                |
 //+------------------------------------------------------------------+
-void AddItem(const int shape, const double p, const double ox, const double oy, const double cw, const double ch,
+string AddItem(const int shape, const double p, const double ox, const double oy, const double cw, const double ch,
              const double xa, const double ya, const double xb, const double yb,
              const bool isArc, const bool smart, const color col, const int w)
   {
@@ -421,6 +421,8 @@ void AddItem(const int shape, const double p, const double ox, const double oy, 
    g_items[g_n].state   = 0;
    g_items[g_n].name    = PFX + IntegerToString(g_n);
    g_n++;
+   
+   return PFX + IntegerToString(g_n);
   }
 
 // diagonal + fan lines + arcs of one cell
